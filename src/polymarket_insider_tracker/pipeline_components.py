@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import time
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -30,10 +31,25 @@ from polymarket_insider_tracker.detector.fresh_wallet import FreshWalletDetector
 from polymarket_insider_tracker.detector.scorer import RiskScorer
 from polymarket_insider_tracker.detector.scoring_config import DetectorConfig
 from polymarket_insider_tracker.detector.size_anomaly import SizeAnomalyDetector
+from polymarket_insider_tracker.ingestor.archive import gap_ledger
+from polymarket_insider_tracker.ingestor.archive.health import ArchiveHealthSignals
+from polymarket_insider_tracker.ingestor.archive.metrics import PrometheusArchiveMetrics
+from polymarket_insider_tracker.ingestor.archive.writer import (
+    ArchiveMetrics,
+    ArchiveWriter,
+    ArchiveWriteStatus,
+)
 from polymarket_insider_tracker.ingestor.clob_client import ClobClient
 from polymarket_insider_tracker.ingestor.metadata_sync import MarketMetadataSync
 from polymarket_insider_tracker.ingestor.models import TradeEvent
+from polymarket_insider_tracker.ingestor.observation_boundary import (
+    LossEvent,
+)
+from polymarket_insider_tracker.ingestor.observation_boundary import (
+    source_id as boundary_source_id,
+)
 from polymarket_insider_tracker.ingestor.trade_poller import IngestionState, TradePoller
+from polymarket_insider_tracker.ingestor.trade_rows import TradeObservation
 from polymarket_insider_tracker.profiler.analyzer import WalletAnalyzer
 from polymarket_insider_tracker.profiler.chain import PolygonClient
 from polymarket_insider_tracker.profiler.funding import FundingTracer
@@ -143,6 +159,7 @@ async def build_components(
     dry_run: bool,
     on_trade: Callable[[TradeEvent], Awaitable[None]],
     on_ingestion_state: Callable[[IngestionState], None],
+    archive_health: ArchiveHealthSignals | None = None,
 ) -> PipelineComponents:
     """Assemble the production collaborators from ``settings``.
 
@@ -154,7 +171,15 @@ async def build_components(
     try:
         logger.debug("Initializing database manager...")
         db_manager = DatabaseManager(settings.database.url, async_mode=True)
-        return _assemble(settings, redis, db_manager, dry_run, on_trade, on_ingestion_state)
+        return _assemble(
+            settings,
+            redis,
+            db_manager,
+            dry_run,
+            on_trade,
+            on_ingestion_state,
+            archive_health,
+        )
     except Exception:
         if db_manager is not None:
             await db_manager.dispose_async()
@@ -169,6 +194,7 @@ def _assemble(
     dry_run: bool,
     on_trade: Callable[[TradeEvent], Awaitable[None]],
     on_ingestion_state: Callable[[IngestionState], None],
+    archive_health: ArchiveHealthSignals | None,
 ) -> PipelineComponents:
     logger.debug("Initializing Polygon client...")
     polygon_client = PolygonClient(
@@ -209,12 +235,26 @@ def _assemble(
     alert_dispatcher = AlertDispatcher(channels, history=alert_history, dry_run=dry_run)
 
     logger.debug("Initializing trade poller...")
+    source = boundary_source_id(
+        settings.polymarket.trades_url, settings.polymarket.trades_coverage.value
+    )
+    archive_write = None
+    loss_mirror = None
+    abandon_write = None
+    if settings.archive.enabled:
+        health = archive_health if archive_health is not None else ArchiveHealthSignals()
+        archive_write = bind_archive_write(settings, db_manager, source, health)
+        loss_mirror = bind_loss_mirror(db_manager, source)
+        abandon_write = bind_abandon_write(db_manager, source, health)
     trade_poller = TradePoller(
         on_trade,
         redis=redis,
         settings=settings.polymarket,
         metadata=metadata_sync,
         on_state_change=on_ingestion_state,
+        archive_write=archive_write,
+        loss_mirror=loss_mirror,
+        abandon_write=abandon_write,
     )
 
     return PipelineComponents(
@@ -230,3 +270,88 @@ def _assemble(
         alert_dispatcher=alert_dispatcher,
         trade_poller=trade_poller,
     )
+
+
+def publish_owed_metrics(
+    health: ArchiveHealthSignals, metrics: PrometheusArchiveMetrics, now: float
+) -> None:
+    metrics.set_owed(health.owed_count(), health.oldest_owed_age(now))
+
+
+def bind_archive_write(
+    settings: Settings,
+    db_manager: DatabaseManager,
+    source: str,
+    health: ArchiveHealthSignals,
+) -> Callable[[TradeObservation], Awaitable[bool]]:
+    raw_retention = settings.archive.raw_retention
+    metrics = PrometheusArchiveMetrics()
+
+    async def archive_write(observation: TradeObservation) -> bool:
+        now = time.time()
+        health.mark_owed(observation.identity, now)
+        ok = await persist_archive_observation(
+            db_manager, source, raw_retention, metrics, observation
+        )
+        health.mark_attempt(now, failed=not ok)
+        if ok:
+            health.clear_owed(observation.identity)
+        else:
+            metrics.record_write_failure("persist")
+        publish_owed_metrics(health, metrics, now)
+        return ok
+
+    return archive_write
+
+
+async def persist_archive_observation(
+    db_manager: DatabaseManager,
+    source: str,
+    raw_retention: bool,
+    metrics: ArchiveMetrics,
+    observation: TradeObservation,
+) -> bool:
+    async with db_manager.get_async_session() as session:
+        writer = ArchiveWriter(
+            session, source_id=source, raw_retention=raw_retention, metrics=metrics
+        )
+        result = await writer.write(observation)
+        if result.status in {ArchiveWriteStatus.INSERTED, ArchiveWriteStatus.DUPLICATE}:
+            await gap_ledger.resolve_write_failure(
+                session, source_id=source, observation_id=observation.identity
+            )
+            return True
+        await gap_ledger.record_write_failure(
+            session,
+            source_id=source,
+            observation_id=observation.identity,
+            detail={"status": result.status.value, "detail": result.detail},
+        )
+    return False
+
+
+def bind_loss_mirror(
+    db_manager: DatabaseManager, source: str
+) -> Callable[[LossEvent], Awaitable[None]]:
+    async def loss_mirror(event: LossEvent) -> None:
+        async with db_manager.get_async_session() as session:
+            await gap_ledger.mirror_loss_event(session, source_id=source, event=event)
+
+    return loss_mirror
+
+
+def bind_abandon_write(
+    db_manager: DatabaseManager, source: str, health: ArchiveHealthSignals
+) -> Callable[[TradeObservation], Awaitable[None]]:
+    metrics = PrometheusArchiveMetrics()
+
+    async def abandon_write(observation: TradeObservation) -> None:
+        async with db_manager.get_async_session() as session:
+            await gap_ledger.abandon_write_failure(
+                session, source_id=source, observation_id=observation.identity
+            )
+        health.clear_owed(observation.identity)
+        metrics.record_write_failure("abandoned")
+        publish_owed_metrics(health, metrics, time.time())
+
+    return abandon_write

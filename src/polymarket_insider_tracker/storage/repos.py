@@ -11,7 +11,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -21,8 +21,11 @@ from sqlalchemy.exc import IntegrityError
 
 from polymarket_insider_tracker.constants import UNRECORDED_DELIVERY_DISPOSITION
 from polymarket_insider_tracker.storage.models import (
+    ArchiveCollectorStateModel,
     FundingTransferModel,
+    IngestGapEventModel,
     RiskAssessmentModel,
+    TradeModel,
     WalletProfileModel,
     WalletRelationshipModel,
 )
@@ -651,3 +654,210 @@ class RiskAssessmentRepository:
             )
         )
         return rows_affected(result)
+
+
+@dataclass(frozen=True)
+class TradeTapeDTO:
+    """One research trades-tape row for idempotent insert."""
+
+    trade_ts: datetime
+    observation_id: str
+    observed_at: datetime
+    archive_start_at: datetime
+    source_id: str
+    transaction_hash: str
+    proxy_wallet: str
+    condition_id: str
+    token_id: str
+    outcome: str | None
+    outcome_index: int | None
+    side: str
+    price: Decimal
+    size_shares: Decimal
+    notional_usdc: Decimal
+    source: str
+    neg_risk: bool | None
+    outcome_repair_status: str
+    outcome_repaired: str | None
+    outcome_index_repaired: int | None
+    receipt_status: str
+    info_knowability_regime: str | None
+    knowability_label_source: str | None
+    raw_row_json: object | None
+
+
+@dataclass(frozen=True)
+class IngestGapEventDTO:
+    """Durable gap / write-failure ledger row."""
+
+    source_id: str
+    class_: str
+    reason: str
+    from_time: datetime
+    detected_at: datetime
+    recorded_at: datetime
+    status: str
+    to_time: datetime | None = None
+    observation_id: str | None = None
+    pages_examined: int | None = None
+    resolved_at: datetime | None = None
+    redis_payload: object | None = None
+    detail: object | None = None
+
+
+class TradeArchiveRepository:
+    """Idempotent trades-tape and gap-ledger persistence (Phase A0)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    def trade_values(self, dto: TradeTapeDTO) -> dict[str, object]:
+        return {
+            "trade_ts": dto.trade_ts,
+            "observation_id": dto.observation_id,
+            "observed_at": dto.observed_at,
+            "archive_start_at": dto.archive_start_at,
+            "source_id": dto.source_id,
+            "transaction_hash": dto.transaction_hash,
+            "proxy_wallet": dto.proxy_wallet,
+            "condition_id": dto.condition_id,
+            "token_id": dto.token_id,
+            "outcome": dto.outcome,
+            "outcome_index": dto.outcome_index,
+            "side": dto.side,
+            "price": dto.price,
+            "size_shares": dto.size_shares,
+            "notional_usdc": dto.notional_usdc,
+            "source": dto.source,
+            "neg_risk": dto.neg_risk,
+            "outcome_repair_status": dto.outcome_repair_status,
+            "outcome_repaired": dto.outcome_repaired,
+            "outcome_index_repaired": dto.outcome_index_repaired,
+            "receipt_status": dto.receipt_status,
+            "info_knowability_regime": dto.info_knowability_regime,
+            "knowability_label_source": dto.knowability_label_source,
+            "raw_row_json": dto.raw_row_json,
+        }
+
+    def _dialect_name(self) -> str:
+        return self.session.get_bind().dialect.name
+
+    def trade_insert_stmt(self, values: dict[str, object]) -> Any:
+        """Dialect-specific idempotent insert (sqlite vs postgres)."""
+        elements = ["trade_ts", "observation_id"]
+        if self._dialect_name() == "sqlite":
+            return (
+                sqlite_insert(TradeModel)
+                .values(**values)
+                .on_conflict_do_nothing(index_elements=elements)
+            )
+        return (
+            pg_insert(TradeModel).values(**values).on_conflict_do_nothing(index_elements=elements)
+        )
+
+    async def insert_trade(self, dto: TradeTapeDTO) -> bool:
+        """Insert one tape row. Returns True when a new row was written."""
+        result = await self.session.execute(self.trade_insert_stmt(self.trade_values(dto)))
+        await self.session.flush()
+        return rows_affected(result)
+
+    async def open_write_failure(self, dto: IngestGapEventDTO) -> None:
+        """Upsert an open write_failure for ``(source_id, observation_id)``."""
+        if dto.observation_id is None:
+            return
+        existing = await self._open_write_failure_row(dto.source_id, dto.observation_id)
+        if existing is not None:
+            existing.reason = dto.reason
+            existing.detail = dto.detail
+            existing.detected_at = dto.detected_at
+            await self.session.flush()
+            return
+        self.session.add(self._gap_model(dto))
+        await self.session.flush()
+
+    async def resolve_write_failure(self, source_id: str, observation_id: str) -> None:
+        now = datetime.now(UTC)
+        result = await self.session.execute(
+            update(IngestGapEventModel)
+            .where(IngestGapEventModel.source_id == source_id)
+            .where(IngestGapEventModel.observation_id == observation_id)
+            .where(IngestGapEventModel.class_ == "write_failure")
+            .where(IngestGapEventModel.status == "open")
+            .values(status="resolved", resolved_at=now)
+        )
+        rows_affected(result)
+
+    async def abandon_write_failure(
+        self, source_id: str, observation_id: str, *, reason: str
+    ) -> None:
+        now = datetime.now(UTC)
+        result = await self.session.execute(
+            update(IngestGapEventModel)
+            .where(IngestGapEventModel.source_id == source_id)
+            .where(IngestGapEventModel.observation_id == observation_id)
+            .where(IngestGapEventModel.class_ == "write_failure")
+            .where(IngestGapEventModel.status == "open")
+            .values(status="abandoned", reason=reason, resolved_at=now)
+        )
+        rows_affected(result)
+
+    async def mirror_ingest_loss(self, dto: IngestGapEventDTO) -> None:
+        """Insert an ingest_loss row; ignore duplicates of the same identity."""
+        try:
+            async with self.session.begin_nested():
+                self.session.add(self._gap_model(dto))
+                await self.session.flush()
+        except IntegrityError:
+            return
+
+    async def get_collector_state(self, source_id: str) -> ArchiveCollectorStateModel | None:
+        result = await self.session.execute(
+            select(ArchiveCollectorStateModel).where(
+                ArchiveCollectorStateModel.source_id == source_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def insert_collector_state(
+        self, *, source_id: str, archive_start_at: datetime, raw_retention: bool
+    ) -> ArchiveCollectorStateModel:
+        model = ArchiveCollectorStateModel(
+            source_id=source_id,
+            archive_start_at=archive_start_at,
+            raw_retention=raw_retention,
+            updated_at=datetime.now(UTC),
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
+
+    async def _open_write_failure_row(
+        self, source_id: str, observation_id: str
+    ) -> IngestGapEventModel | None:
+        result = await self.session.execute(
+            select(IngestGapEventModel)
+            .where(IngestGapEventModel.source_id == source_id)
+            .where(IngestGapEventModel.observation_id == observation_id)
+            .where(IngestGapEventModel.class_ == "write_failure")
+            .where(IngestGapEventModel.status == "open")
+            .order_by(IngestGapEventModel.gap_id.desc())
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    def _gap_model(dto: IngestGapEventDTO) -> IngestGapEventModel:
+        return IngestGapEventModel(
+            source_id=dto.source_id,
+            class_=dto.class_,
+            reason=dto.reason,
+            from_time=dto.from_time,
+            to_time=dto.to_time,
+            observation_id=dto.observation_id,
+            pages_examined=dto.pages_examined,
+            detected_at=dto.detected_at,
+            recorded_at=dto.recorded_at,
+            resolved_at=dto.resolved_at,
+            status=dto.status,
+            redis_payload=dto.redis_payload,
+            detail=dto.detail,
+        )

@@ -19,6 +19,7 @@ from polymarket_insider_tracker.alerter.dispatcher import AlertChannel, AlertDis
 from polymarket_insider_tracker.alerter.formatter import AlertFormatter
 from polymarket_insider_tracker.alerter.history import AlertHistory
 from polymarket_insider_tracker.config import (
+    ArchiveSettings,
     DatabaseSettings,
     DetectorSettings,
     DiscordSettings,
@@ -77,6 +78,8 @@ def make_test_settings(
     trades_poll_interval_seconds: int = 5,
     trades_recovery_horizon_seconds: int = 600,
     health_port: int = 8080,
+    archive_enabled: bool = False,
+    archive_raw_retention: bool = True,
 ) -> Settings:
     """Create a fully validated ``Settings`` value without reading the environment.
 
@@ -121,6 +124,12 @@ def make_test_settings(
                     "DETECTOR_PERSIST_ASSESSMENTS": persist_assessments,
                     "DETECTOR_ALERT_THRESHOLD": alert_threshold,
                     "DETECTOR_DEDUP_WINDOW_SECONDS": 3600,
+                }
+            ),
+            "archive": ArchiveSettings.model_validate(
+                {
+                    "ARCHIVE_ENABLED": archive_enabled,
+                    "ARCHIVE_RAW_RETENTION": archive_raw_retention,
                 }
             ),
             "LOG_LEVEL": "INFO",

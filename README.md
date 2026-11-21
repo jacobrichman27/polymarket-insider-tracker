@@ -141,6 +141,16 @@ Leave alert variables empty to run without notifications. Risk assessments can s
 
 Prefer `--dry-run` (or `DRY_RUN=true`) until you are ready: the pipeline still scores and can persist assessments with `delivery_disposition="dry_run"`, but it sends **no** notifications and writes **no** Redis delivery-dedup keys.
 
+### Research trades tape (Phase A0, opt-in)
+
+`ARCHIVE_ENABLED` defaults to **off** so upgrades stay monitor-only. When you turn it on (after migrating to head):
+
+1. Set `ARCHIVE_ENABLED=true` (keep `ARCHIVE_RAW_RETENTION=true` unless a versioned cost amendment says otherwise).
+2. Restart; `/ready` gains a `trade_archive` component. First successful archive-enabled collection stamps durable `archive_start_at`.
+3. Dry-run **still writes** the `trades` tape and gap ledger; it only suppresses real Discord/Telegram delivery.
+
+Capacity assumptions (daily partitions, ~90-day primary retain/detach, raw-on disk budget, disk ≥70% ops alarm) live in `specs/005-research-trade-archive/quickstart.md` and `Data.md` Provisional capacity.
+
 When delivery is enabled:
 
 - Dedup is **per channel** (`alert:dedup:<channel>:<wallet>:<market>`), so a failed Discord send can still retry while Telegram already succeeded.
@@ -199,6 +209,8 @@ A recoverable `degraded` trade source with recent successful fetches can still b
 | `DETECTOR_ALERT_THRESHOLD` | No | `0.80` | Minimum composite score to send an alert (0–1) |
 | `DETECTOR_DEDUP_WINDOW_SECONDS` | No | `3600` | Per-(wallet, market) alert dedup window |
 | `DETECTOR_PERSIST_ASSESSMENTS` | No | `true` | Persist every signal-bearing risk assessment |
+| `ARCHIVE_ENABLED` | No | `false` | Opt-in research trades tape (fan-out + policy-(a) stall + `trade_archive` ready) |
+| `ARCHIVE_RAW_RETENTION` | No | `true` | Store Core hot `raw_row_json` when archive is on (off only via versioned cost change) |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 | `DRY_RUN` | No | `false` | Skip sending alerts (same idea as `--dry-run`) |
 | `HEALTH_PORT` | No | `8080` | Health / metrics HTTP port |

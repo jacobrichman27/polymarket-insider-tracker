@@ -28,6 +28,12 @@ from redis.asyncio import Redis
 
 from polymarket_insider_tracker.config import PolymarketSettings
 from polymarket_insider_tracker.ingestor.acquisition import make_trades_source
+from polymarket_insider_tracker.ingestor.archive.delivery import (
+    ArchiveWriteFn,
+    FutureConsumer,
+    NoOpFutureConsumer,
+    write_with_backoff,
+)
 from polymarket_insider_tracker.ingestor.models import MarketMetadata, TradeEvent
 from polymarket_insider_tracker.ingestor.observation_boundary import (
     BoundaryOrigin,
@@ -68,6 +74,8 @@ _BARE_PORT_TOKEN_PATTERN = re.compile(
 )
 
 TradeCallback = Callable[[TradeEvent], Awaitable[None]]
+LossMirrorFn = Callable[[LossEvent], Awaitable[None]]
+AbandonFn = Callable[[TradeObservation], Awaitable[None]]
 Clock = Callable[[], float]
 Sleeper = Callable[[float], Awaitable[None]]
 
@@ -263,8 +271,19 @@ class TradePoller:
         clock: Clock = time.time,
         sleeper: Sleeper = asyncio.sleep,
         random_source: Callable[[], float] = random.random,
+        archive_write: ArchiveWriteFn | None = None,
+        future_consumer: FutureConsumer | None = None,
+        loss_mirror: LossMirrorFn | None = None,
+        abandon_write: AbandonFn | None = None,
     ) -> None:
         self._on_trade = on_trade
+        self._archive_write = archive_write
+        self._loss_mirror = loss_mirror
+        self._abandon_write = abandon_write
+        self._owed_observations: dict[str, TradeObservation] = {}
+        self._future_consumer: FutureConsumer = (
+            future_consumer if future_consumer is not None else NoOpFutureConsumer()
+        )
         self._metadata = metadata
         self._on_state_change = on_state_change
         self._clock = clock
@@ -553,7 +572,7 @@ class TradePoller:
         )
         await self._anchor(page, analysis, BoundaryOrigin.RE_ANCHORED, (event,))
         self._restart_check_pending = False
-        self._log_loss(event)
+        await self._record_loss(event)
 
     async def _prove_and_advance(self, page: TradesPage, analysis: PageAnalysis) -> None:
         """Prove against the durable boundary, recover once if needed, else freeze or continue."""
@@ -636,11 +655,13 @@ class TradePoller:
         """Keep observations flowing behind a frozen boundary without moving it."""
         newest = analysis.newest
         assert newest is not None
-        candidates = self._select_candidates(analysis, floor=self._candidate_floor(newest))
+        floor = self._candidate_floor(newest)
+        await self._abandon_unreachable(floor)
+        candidates = self._select_candidates(analysis, floor=floor)
         delivered = await self._deliver(candidates)
         for gap in self._gaps:
             gap.pages_examined += self._cycle_pages
-        if self._stop_event.is_set() and len(delivered) < len(candidates):
+        if self._incomplete_delivery(delivered, candidates):
             return
         await self.boundary.retain(
             identities=delivered,
@@ -658,7 +679,7 @@ class TradePoller:
             return
         events = tuple(gap.as_loss_event(now) for gap in self._gaps)
         for event in events:
-            self._log_loss(event)
+            await self._record_loss(event)
         await self.boundary.advance(
             boundary_time=self._provisional,
             origin=BoundaryOrigin.RE_ANCHORED,
@@ -680,6 +701,12 @@ class TradePoller:
             event.reason.value,
             event.pages_examined,
         )
+
+    async def _record_loss(self, event: LossEvent) -> None:
+        self._log_loss(event)
+        if self._loss_mirror is None:
+            return
+        await self._loss_mirror(event)
 
     async def _anchor(
         self,
@@ -727,9 +754,11 @@ class TradePoller:
     async def _advance_proven(self, page: TradesPage, analysis: PageAnalysis) -> None:
         newest = analysis.newest
         assert newest is not None
-        candidates = self._select_candidates(analysis, floor=self._candidate_floor(newest))
+        floor = self._candidate_floor(newest)
+        await self._abandon_unreachable(floor)
+        candidates = self._select_candidates(analysis, floor=floor)
         delivered = await self._deliver(candidates)
-        if self._stop_event.is_set() and len(delivered) < len(candidates):
+        if self._incomplete_delivery(delivered, candidates):
             return
         await self.boundary.advance(
             boundary_time=newest,
@@ -738,6 +767,21 @@ class TradePoller:
             identities=delivered,
         )
         self._after_advance(page, analysis)
+
+    async def _abandon_unreachable(self, floor: int) -> None:
+        if self._archive_write is None or not self._owed_observations:
+            return
+        for identity in self._unreachable_owed_ids(floor):
+            observation = self._owed_observations.pop(identity)
+            if self._abandon_write is not None:
+                await self._abandon_write(observation)
+
+    def _unreachable_owed_ids(self, floor: int) -> list[str]:
+        return [
+            identity
+            for identity, observation in self._owed_observations.items()
+            if observation.provider_timestamp < floor
+        ]
 
     def _select_candidates(self, analysis: PageAnalysis, *, floor: int) -> list[TradeObservation]:
         """Classify every eligible observation; return the new ones oldest-first."""
@@ -752,17 +796,63 @@ class TradePoller:
                 self._count(disposition)
         return sorted(emitted, key=lambda item: (item.provider_timestamp, item.identity))
 
+    def _incomplete_delivery(
+        self, delivered: dict[str, int], candidates: list[TradeObservation]
+    ) -> bool:
+        if len(delivered) >= len(candidates):
+            return False
+        if self._archive_write is not None:
+            return True
+        return self._stop_event.is_set()
+
     async def _deliver(self, candidates: list[TradeObservation]) -> dict[str, int]:
         delivered: dict[str, int] = {}
         for observation in candidates:
             if self._stop_event.is_set():
                 break
-            await self._deliver_one(observation)
-            delivered[observation.identity] = observation.provider_timestamp
+            if not await self._credit_or_stall(observation, delivered):
+                break
         return delivered
 
-    async def _deliver_one(self, observation: TradeObservation) -> None:
+    async def _credit_or_stall(
+        self, observation: TradeObservation, delivered: dict[str, int]
+    ) -> bool:
+        credited = await self._deliver_one(observation)
+        if credited:
+            delivered[observation.identity] = observation.provider_timestamp
+            return True
+        return self._archive_write is None
+
+    async def _deliver_one(self, observation: TradeObservation) -> bool:
         started = self._clock()
+        if self._archive_write is not None:
+            return await self._deliver_archive_enabled(observation, started=started)
+        await self._invoke_monitor(observation)
+        self._tallies.processing_lag += max(0.0, self._clock() - started)
+        await self._credit_identity(observation)
+        return True
+
+    async def _deliver_archive_enabled(
+        self, observation: TradeObservation, *, started: float
+    ) -> bool:
+        assert self._archive_write is not None
+        archived = await write_with_backoff(
+            self._archive_write,
+            observation,
+            sleeper=self._sleeper,
+            should_stop=self._stop_event.is_set,
+        )
+        await self._invoke_monitor(observation)
+        await self._future_consumer.consume(observation)
+        self._tallies.processing_lag += max(0.0, self._clock() - started)
+        if not archived:
+            self._owed_observations[observation.identity] = observation
+            return False
+        self._owed_observations.pop(observation.identity, None)
+        await self._credit_identity(observation)
+        return True
+
+    async def _invoke_monitor(self, observation: TradeObservation) -> None:
         try:
             await self._on_trade(observation.event)
         except Exception as exc:
@@ -772,7 +862,8 @@ class TradePoller:
                 redact_exception_message(exc),
             )
             self._tallies.counts["callback_errors"] += 1
-        self._tallies.processing_lag += max(0.0, self._clock() - started)
+
+    async def _credit_identity(self, observation: TradeObservation) -> None:
         await self.boundary.record_identity(observation.identity, observation.provider_timestamp)
         self._tallies.last_trade_at = max(
             observation.provider_timestamp, self._tallies.last_trade_at or 0

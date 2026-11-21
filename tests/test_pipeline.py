@@ -566,12 +566,13 @@ class TestIngestionWiring:
         async_engine: AsyncEngine,
         sample_trade_event: TradeEvent,
         niche_market: MarketMetadata,
+        unused_tcp_port: int,
     ) -> None:
         clock = FakeClock(POLL_START)
         server = seeded_server(clock)
         channel = FakeAlertChannel("discord")
         pipeline = await wire_journey_pipeline(
-            make_test_settings(alert_threshold=0.4),
+            make_test_settings(alert_threshold=0.4, health_port=unused_tcp_port),
             redis=fake_redis,
             market=niche_market,
             db_manager=db_manager,

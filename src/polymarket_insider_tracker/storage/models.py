@@ -11,11 +11,13 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Index,
     Integer,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     Text,
     UniqueConstraint,
@@ -217,3 +219,78 @@ class PipelineTerminalErrorModel(Base):
     )
 
     __table_args__ = (Index("idx_pipeline_terminal_errors_recorded", "recorded_at"),)
+
+
+class TradeModel(Base):
+    """Partitioned research trades-tape row (Phase A0)."""
+
+    __tablename__ = "trades"
+    __table_args__ = (
+        PrimaryKeyConstraint("trade_ts", "observation_id"),
+        Index("idx_trades_condition_ts", "condition_id", "trade_ts"),
+        Index("idx_trades_wallet_ts", "proxy_wallet", "trade_ts"),
+        Index("idx_trades_tx_ts", "transaction_hash", "trade_ts"),
+        {"postgresql_partition_by": "RANGE (trade_ts)"},
+    )
+
+    trade_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    observation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    archive_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    transaction_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    proxy_wallet: Mapped[str] = mapped_column(Text, nullable=False)
+    condition_id: Mapped[str] = mapped_column(Text, nullable=False)
+    token_id: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    side: Mapped[str] = mapped_column(Text, nullable=False)
+    price: Mapped[Decimal] = mapped_column(Numeric(20, 10), nullable=False)
+    size_shares: Mapped[Decimal] = mapped_column(Numeric(30, 10), nullable=False)
+    notional_usdc: Mapped[Decimal] = mapped_column(Numeric(30, 10), nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    neg_risk: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    outcome_repair_status: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome_repaired: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outcome_index_repaired: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    receipt_status: Mapped[str] = mapped_column(Text, nullable=False)
+    info_knowability_regime: Mapped[str | None] = mapped_column(Text, nullable=True)
+    knowability_label_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_row_json: Mapped[object | None] = mapped_column(JSON, nullable=True)
+
+
+class IngestGapEventModel(Base):
+    """Durable ingest-loss and archive write-failure ledger (Phase A0)."""
+
+    __tablename__ = "ingest_gap_events"
+    __table_args__ = (
+        Index("idx_ingest_gap_source_class", "source_id", "class"),
+        Index("idx_ingest_gap_observation", "observation_id"),
+        Index("idx_ingest_gap_status", "status"),
+    )
+
+    gap_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_id: Mapped[str] = mapped_column(Text, nullable=False)
+    class_: Mapped[str] = mapped_column("class", Text, nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    from_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    to_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pages_examined: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    redis_payload: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    detail: Mapped[object | None] = mapped_column(JSON, nullable=True)
+
+
+class ArchiveCollectorStateModel(Base):
+    """Set-once continuous-archive start state per source (Phase A0)."""
+
+    __tablename__ = "archive_collector_state"
+
+    source_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    archive_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    raw_retention: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

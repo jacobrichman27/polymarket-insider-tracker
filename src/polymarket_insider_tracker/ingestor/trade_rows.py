@@ -87,6 +87,8 @@ class TradeObservation:
     identity: str
     provider_timestamp: int
     outcome_resolution: OutcomeResolution
+    raw_row: Mapping[str, object] | None = None
+    observed_at: datetime | None = None
 
     @property
     def outcome_known(self) -> bool:
@@ -237,7 +239,13 @@ def observation_identity(fields: _IdentityFields) -> str:
     return hashlib.sha256("|".join(parts).encode()).hexdigest()
 
 
-def _build_observation(raw: Mapping[object, object], fields: _IdentityFields) -> TradeObservation:
+def _raw_payload(raw: Mapping[object, object]) -> dict[str, object]:
+    return {str(key): value for key, value in raw.items()}
+
+
+def _build_observation(
+    raw: Mapping[object, object], fields: _IdentityFields, *, now: int
+) -> TradeObservation:
     outcome_index = _optional_index(raw.get("outcomeIndex"))
     outcome = _optional_text(raw, "outcome")
     if not outcome or outcome_index is None:
@@ -265,6 +273,8 @@ def _build_observation(raw: Mapping[object, object], fields: _IdentityFields) ->
         identity=observation_identity(fields),
         provider_timestamp=fields.timestamp,
         outcome_resolution=_initial_resolution(outcome, outcome_index),
+        raw_row=_raw_payload(raw),
+        observed_at=datetime.fromtimestamp(now, tz=UTC),
     )
 
 
@@ -278,7 +288,7 @@ def parse_trade_row(raw: object, *, now: int) -> TradeObservation | InvalidRow:
         return fields
     if fields.timestamp > now + CLOCK_SKEW_ALLOWANCE_SECONDS:
         return _invalid(row, "timestamp", RowDisposition.INVALID_FUTURE_TIMESTAMP)
-    return _build_observation(row, fields)
+    return _build_observation(row, fields, now=now)
 
 
 def _token_outcome(metadata: MarketMetadata, asset_id: str) -> tuple[int, str] | None:

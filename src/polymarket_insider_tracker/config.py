@@ -364,6 +364,29 @@ class DetectorSettings(BaseSettings):
     )
 
 
+class ArchiveSettings(BaseSettings):
+    """Opt-in research trades-tape writing (Phase A0)."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="ARCHIVE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        hide_input_in_errors=True,
+    )
+
+    enabled: bool = Field(
+        default=False,
+        alias="ARCHIVE_ENABLED",
+        description="Persist admitted fills to the research trades tape (default off)",
+    )
+    raw_retention: bool = Field(
+        default=True,
+        alias="ARCHIVE_RAW_RETENTION",
+        description="Store Core hot raw_row_json when archive writing is enabled",
+    )
+
+
 class Settings(BaseSettings):
     """Main application settings.
 
@@ -395,6 +418,7 @@ class Settings(BaseSettings):
     discord: DiscordSettings = Field(default_factory=DiscordSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
     detector: DetectorSettings = Field(default_factory=DetectorSettings)
+    archive: ArchiveSettings = Field(default_factory=ArchiveSettings)
 
     # Application settings
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
@@ -449,6 +473,10 @@ class Settings(BaseSettings):
             "log_level": self.log_level,
             "health_port": str(self.health_port),
             "dry_run": str(self.dry_run),
+            "archive": {
+                "enabled": str(self.archive.enabled),
+                "raw_retention": str(self.archive.raw_retention),
+            },
         }
 
     @staticmethod

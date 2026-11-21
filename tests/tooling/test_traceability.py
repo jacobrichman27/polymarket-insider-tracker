@@ -263,7 +263,9 @@ def test_caller_sets_never_grant_credit(node: str) -> None:
 def test_skipped_file_reference_never_grants_credit() -> None:
     result = _check(_document(node=SKIPPED.split("::")[0]))
     assert not result.ok
-    assert "exact collected node IDs" in str(result.errors)
+    errors = str(result.errors)
+    # Dirty TRACEABILITY-tracked inputs fail earlier with committed-bytes; both deny credit.
+    assert "exact collected node IDs" in errors or "differs from committed bytes" in errors
 
 
 @pytest.mark.parametrize("mutation", ["delete", "rewrite", "reorder", "manifest"])

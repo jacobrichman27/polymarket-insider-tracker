@@ -78,6 +78,15 @@ class TestStrictParsing:
         assert observation.repaired is False
         assert len(observation.identity) == 64
         assert int(observation.identity, 16) >= 0
+        assert observation.raw_row is not None
+        assert observation.raw_row["transactionHash"] == row["transactionHash"]
+        assert observation.observed_at == datetime.fromtimestamp(NOW, tz=UTC)
+
+    def test_parsed_observation_retains_provider_raw_payload(self) -> None:
+        row = trade_row(timestamp=NOW - 5, transaction=11, wallet=2)
+        observation = _observation(row)
+        assert observation.raw_row is not None
+        assert dict(observation.raw_row) == {str(key): value for key, value in row.items()}
 
     def test_identity_fields_are_exactly_the_documented_ones(self) -> None:
         assert IDENTITY_FIELDS == (

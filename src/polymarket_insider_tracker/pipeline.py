@@ -38,6 +38,7 @@ from polymarket_insider_tracker.detector.evaluation_clock import (
 from polymarket_insider_tracker.detector.models import RiskAssessment
 from polymarket_insider_tracker.detector.scorer import SignalBundle
 from polymarket_insider_tracker.ingestor.alert_path_health import AlertPathHealthMonitor
+from polymarket_insider_tracker.ingestor.archive.health import ArchiveHealthSignals
 from polymarket_insider_tracker.ingestor.health import ComponentStatus, HealthMonitor
 from polymarket_insider_tracker.ingestor.readiness import running_ingestion_status
 from polymarket_insider_tracker.ingestor.trade_poller import IngestionState, TradePoller
@@ -185,6 +186,7 @@ class Pipeline:
         self._trade_poller: TradePoller | None = None
         self._funding_tracer: FundingTracer | None = None
         self._health_monitor = AlertPathHealthMonitor(self._settings.detector.alert_threshold)
+        self._archive_health = ArchiveHealthSignals()
         self._wire_health_monitor()
 
         # Synchronization
@@ -246,7 +248,12 @@ class Pipeline:
         self._health_monitor.set_component_checker("database", self._check_database)
         self._health_monitor.set_component_checker("redis", self._check_redis)
         self._health_monitor.set_component_checker("ingestion", self._check_ingestion)
+        if self._settings.archive.enabled:
+            self._health_monitor.set_component_checker("trade_archive", self._check_trade_archive)
         self._health_monitor.set_last_error_provider(lambda: self._stats.last_error)
+
+    async def _check_trade_archive(self) -> ComponentStatus:
+        return self._archive_health.evaluate(time.time())
 
     async def _check_database(self) -> ComponentStatus:
         if not self._db_manager:
@@ -377,6 +384,7 @@ class Pipeline:
             dry_run=self._dry_run,
             on_trade=self.process_trade,
             on_ingestion_state=self.on_ingestion_state,
+            archive_health=self._archive_health,
         )
         installed = self._install(components)
         logger.info("All components initialized")

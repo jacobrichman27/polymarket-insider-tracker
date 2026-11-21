@@ -220,3 +220,26 @@ Fresh local static cognitive <=5, separate cyclomatic <=10, Python 3.11/3.12/3.1
 compatibility, and private loopback PostgreSQL/Redis 7 service gates passed. This is
 a local correction candidate; remote CI, independent review, approval, publication,
 merge, and main verification remain pending.
+
+### Slice 005 A0 implement receipt (2026-11-20)
+
+Runtime path landed under `ARCHIVE_ENABLED` (default off): Alembic
+`005_research_trade_archive_a0`, `TradeModel` / `ingest_gap_events` /
+`archive_collector_state`, raw on `TradeObservation`, ArchiveWriter,
+Archive→Monitor fan-out + policy-(a) stall/backoff, gap ledger + Redis
+loss mirror, abandon-when-unreachable hook, `trade_archive` checker,
+Prometheus capacity metrics. Focused suites listed in
+`specs/005-research-trade-archive/quickstart.md`. **G-035–G-043 remain
+Open** until Phase 8 static/compatibility/services/`quality.verify` and
+converge close the evidence bar; this receipt does not rewrite earlier
+“Open (implement)” dispositions.
+
+### Slice 005 A0 Phase 8 verify receipt (2026-11-21)
+
+Local gates passed on the implement tree: `verify.py --profile static`,
+`--profile compatibility` (4459 passed), `--profile services` (migrations
+through `005_research_trade_archive_a0`), and `python -m quality.verify`
+(exit 0, enrolled coverage 100%). Converge found no additional unbuilt A0
+tasks to append; gaps G-035–G-043 stay **Open** until a clean committed
+HEAD + operator capacity provisioning close them (append-only; prior Open
+dispositions unchanged).

@@ -7,6 +7,7 @@ building a ``TradePoller`` over a fake provider on the loopback clock.
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 import httpx
@@ -14,8 +15,17 @@ from fakeredis import FakeAsyncRedis, FakeServer
 
 from polymarket_insider_tracker.config import PolymarketSettings
 from polymarket_insider_tracker.ingestor.models import TradeEvent
+from polymarket_insider_tracker.ingestor.observation_boundary import LossEvent
 from polymarket_insider_tracker.ingestor.trade_poller import TradePoller
-from tests.fakes import FakeClock, FakeTradesServer
+from polymarket_insider_tracker.ingestor.trade_rows import TradeObservation
+from tests.fakes import FakeClock, FakeTradesServer, trade_row
+
+ArchiveWriteFn = Callable[[TradeObservation], Awaitable[bool]]
+AbandonFn = Callable[[TradeObservation], Awaitable[None]]
+LossMirrorFn = Callable[[LossEvent], Awaitable[None]]
+Sleeper = Callable[[float], Awaitable[None]]
+
+DEFAULT_HISTORY_NEWEST = 1_788_983_719
 
 
 class RecordingTradeCallback:
@@ -37,12 +47,25 @@ class TradeProvider(Protocol):
     def client(self) -> httpx.AsyncClient: ...
 
 
+def seed_history(
+    server: FakeTradesServer, *, count: int = 5, newest: int = DEFAULT_HISTORY_NEWEST
+) -> None:
+    """Publish ``count`` historical rows ending at ``newest`` (oldest first offsets)."""
+    for offset in range(count):
+        server.publish(trade_row(timestamp=newest - offset * 60, transaction=offset, wallet=offset))
+
+
 def build_poller(
     server: TradeProvider,
     clock: FakeClock,
     redis: FakeAsyncRedis,
     settings: PolymarketSettings,
     callback: RecordingTradeCallback,
+    *,
+    archive_write: ArchiveWriteFn | None = None,
+    abandon_write: AbandonFn | None = None,
+    loss_mirror: LossMirrorFn | None = None,
+    sleeper: Sleeper | None = None,
 ) -> TradePoller:
     """A poller over ``server`` on the fake clock; the shared wiring recipe."""
     return TradePoller(
@@ -51,8 +74,11 @@ def build_poller(
         settings=settings,
         http_client=server.client(),
         clock=clock,
-        sleeper=clock.sleep,
+        sleeper=clock.sleep if sleeper is None else sleeper,
         random_source=lambda: 0.0,
+        archive_write=archive_write,
+        abandon_write=abandon_write,
+        loss_mirror=loss_mirror,
     )
 
 

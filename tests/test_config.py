@@ -13,6 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from polymarket_insider_tracker.config import (
+    ArchiveSettings,
     DatabaseSettings,
     DetectorSettings,
     DiscordSettings,
@@ -72,6 +73,7 @@ SETTINGS_GROUPS: tuple[tuple[type[BaseSettings], str], ...] = (
     (DiscordSettings, "DISCORD_"),
     (TelegramSettings, "TELEGRAM_"),
     (DetectorSettings, "DETECTOR_"),
+    (ArchiveSettings, "ARCHIVE_"),
     (Settings, ""),
 )
 
@@ -124,7 +126,14 @@ class TestSharedDotenvContract:
             for key, value in os.environ.items()
             if key not in {"DATABASE_URL", "REDIS_URL", "LOG_LEVEL"}
             and not key.startswith(
-                ("POLYGON_", "POLYMARKET_", "DISCORD_", "TELEGRAM_", "DETECTOR_")
+                (
+                    "POLYGON_",
+                    "POLYMARKET_",
+                    "DISCORD_",
+                    "TELEGRAM_",
+                    "DETECTOR_",
+                    "ARCHIVE_",
+                )
             )
         }
         with env_context(scrubbed_environment, clear=True):
@@ -731,6 +740,44 @@ class TestSettings:
             assert "secretpass" not in db_url
             assert "***" in db_url
             assert "user" in db_url
+
+    def test_archive_settings_default_off_with_raw_on(self) -> None:
+        """Archive writing defaults off; raw retention defaults on when archive is enabled later."""
+        with env_context(
+            {"DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db"},
+            clear=True,
+        ):
+            settings = Settings()
+
+        assert settings.archive.enabled is False
+        assert settings.archive.raw_retention is True
+
+    def test_archive_settings_can_enable_via_env(self) -> None:
+        with env_context(
+            {
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "ARCHIVE_ENABLED": "true",
+                "ARCHIVE_RAW_RETENTION": "false",
+            },
+            clear=True,
+        ):
+            settings = Settings()
+
+        assert settings.archive.enabled is True
+        assert settings.archive.raw_retention is False
+
+    def test_redacted_summary_includes_archive_flags_without_secrets(self) -> None:
+        with env_context(
+            {
+                "DATABASE_URL": "postgresql+psycopg://user:secret@localhost/db",
+                "ARCHIVE_ENABLED": "true",
+            },
+            clear=True,
+        ):
+            summary = Settings().redacted_summary()
+
+        assert summary["archive"] == {"enabled": "True", "raw_retention": "True"}
+        assert "secret" not in str(summary)
 
     def test_redacted_summary_describes_the_trades_source(self) -> None:
         """The polymarket block names the supported source and the legacy disposition."""
