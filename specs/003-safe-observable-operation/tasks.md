@@ -1,7 +1,7 @@
 # Tasks: Safe Observable Operation
 
 **Input**: Design documents from `specs/003-safe-observable-operation/`
-**Prerequisites**: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/*.md`, `quickstart.md`, and Patrick's direct authorization of slice 003. Reviewer-owned `checklists/operational.md` markers are Patrick's and are left unchecked by agents.
+**Prerequisites**: `spec.md`, `plan.md`, `research.md`, `data-model.md`, `contracts/*.md`, `quickstart.md`, and (historically) Patrick's direct authorization of slice 003. Reviewer-owned `checklists/operational.md` markers are owned by the repository owner of this fork and are left unchecked by agents.
 
 **Tests**: Every behavior change begins with a failing test. `unittest.mock` is prohibited; working fakes, `fakeredis`, and real value objects are used.
 
@@ -63,3 +63,14 @@
 - [x] T023 Update `README.md` and user documentation
 - [x] T024 Commit changes cleanly on `feat/slice-003-safe-observable-operation`
 - [x] T025 Generate `PHASE1_RESULT.md` in dispatch-state directory (present with `PHASE1_READY`; verified during phase 2 review)
+
+## Amendment receipt — archive tape health (2026-11-18)
+
+**Contract-only** (not runtime implement). Closes specification ownership for G-041 ahead of slice 005.
+
+| Item | Status |
+|---|---|
+| `contracts/health-endpoints.md` — `trade_archive` required when archive enabled; provisional 30s/60s/5min SLOs; quiet-market exemption; `/ready` fail only when `down` | Amended |
+| `contracts/pipeline-lifecycle.md` — assessment persist must not mark tape down or block alerts; identity credit split monitor-only vs archive-enabled | Amended |
+| Runtime `HealthMonitor` components | **Unchanged** until 005 (+ health wiring) implements the amended contract |
+| Gap register G-041 | Spec ownership recorded; remains **Open** until implement + tests |

@@ -6,7 +6,7 @@ APPROVE; triage in [evidence/revision-2026-10-19.md](evidence/revision-2026-10-1
 
 **Status, stated plainly**: this contract as a whole is **not approved** (the 2026-10-20 owner decisions below settle D1a–D4 only; they are not a reviewer approval). Nothing here records an approval,
 waiver or acceptance. The reviewer-owned [domain checklist](checklists/domain-requirements.md) is
-entirely unchecked (23 items) and stays that way until Patrick or a designated reviewer decides.
+entirely unchecked (23 items) and stays that way until the repository owner or a designated reviewer decides.
 No product code (`src/`), test (`tests/`), migration (`alembic/`), quality-gate (`quality/`) or CI file
 changed. The one change outside `specs/` is the evidence tooling this packet relies on,
 `scripts/spec004_evidence/*` (stdlib only, no `src/` import, inside every Python gate; see "Remaining

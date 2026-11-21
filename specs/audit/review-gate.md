@@ -5,6 +5,10 @@
 **Planning authorization**: Granted for slice 002
 **Implementation authorization**: Granted for slice 002 by Patrick on 2026-09-07; merge and later slices remain unauthorized
 
+**Fork ownership (2026-11-18):** Living governance and reviewer-owned checklist `[x]` authority
+belong to the repository owner of this fork (constitution 2.1.0). The Patrick-dated status lines
+above remain a factual upstream authorization record and are not rewritten.
+
 The gap register and four specification-quality checklists are complete. The specs contain no
 unresolved placeholder because each uncertain area has a recommended assumption. Those assumptions
 were approved as the baseline package. That approval authorizes clarification, planning, checklist and
@@ -87,8 +91,8 @@ own bounded specification before planning.
   `$speckit-specify` and maintained by `$speckit-clarify`. Agy initially challenged this path, then corrected
   its finding after reviewing the exact v1.0.4 ownership rule.
 - Later `$speckit-checklist` runs create reviewer-owned domain files such as `api.md`, `operations.md`, or
-  `data-integrity.md`. Agents MUST leave their new items unchecked; only Patrick or his designated human
-  reviewer may mark them complete.
+  `data-integrity.md`. Agents MUST leave their new items unchecked; only the repository owner or a
+  designated human reviewer may mark them complete.
 - Numeric feature prefixes record creation order. Execution order is `002` → `001` → `003` → `004`, so the
   dependency/test foundation lands before feature behavior.
 - Before every per-slice Spec Kit command, set

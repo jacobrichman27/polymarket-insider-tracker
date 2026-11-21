@@ -5,7 +5,7 @@
 **Feature**: [spec.md](../spec.md)
 
 **Note**: This custom checklist is a reviewer-owned requirements-quality review artifact.
-**Review Ownership**: Patrick or a human reviewer he designates owns the `[x]` judgment.
+**Review Ownership**: The repository owner of this fork (or a human reviewer they designate) owns the `[x]` judgment.
 **Marker Semantics**: `[x]` means the criterion has been reviewed and satisfied for requirements quality. It does not mean code is complete.
 **Implementation Gate**: All newly generated items remain unchecked `[ ]`. Agents must not mark reviewer-owned criteria satisfied.
 

@@ -330,7 +330,22 @@ Task T008: tests/ingestor/test_observation_boundary.py
 
 - Every task remains unchecked until implementation evidence proves it complete.
 - `[P]` means file-independent, not permission to run concurrent Spec Kit feature-writing commands.
-- Reviewer checklist state is controlled by Patrick and is not modified by `$speckit-implement`.
+- Reviewer checklist state is controlled by the repository owner (historically Patrick upstream) and is not modified by `$speckit-implement`.
 - Stop for a spec or plan revision, or for the product stop gate, if implementation cannot prove the
   boundary rule, keep the request budget, preserve the public configuration path, or satisfy the
   Complexipy limit without exemptions.
+
+## Amendment receipt — archive delivery (2026-11-18)
+
+**Contract-only** (not runtime implement). Closes the *specification* ownership for G-036–G-038 /
+G-037 decision encoding ahead of slice 005.
+
+| Item | Status |
+|---|---|
+| `contracts/observation-boundary.md` — fan-out, policy (a), checkpoint stall, crash semantics, write-failure vocabulary authorization | Amended |
+| `contracts/status-and-config.md` — Pipeline Integration archive-enabled wiring; surface; enable flag placeholder; 003 health handoff | Amended |
+| Runtime `TradePoller._deliver_one` retain-always | **Unchanged** until 005 (+ wiring) implements the amended contract |
+| Gap register G-036–G-038 / G-037 | Spec ownership recorded; remain **Open** until implement + tests |
+
+Canonical research sequences remain in root `Data.md` Observation fan-out contract; this amendment is
+the 001-owned boundary authority those sequences bind to.

@@ -204,7 +204,7 @@ actionable redacted message.
 
 ## Appendix A — Golden Policy Table (T2 ratchet)
 
-Golden-file changes require Patrick's approval. Remote branch-protection wiring
+Golden-file changes require the repository owner's approval. Remote branch-protection wiring
 is NOT_INSPECTED and claimed by nobody. Bound by
 `tests/tooling/test_policy_snapshot.py`, which asserts values (not merely
 cross-surface consistency) and proves a score-6 fixture fails under the golden

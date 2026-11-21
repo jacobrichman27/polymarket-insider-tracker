@@ -208,7 +208,7 @@ Task T018: Fix src/polymarket_insider_tracker/profiler/funding.py typing
 
 - Every task remains unchecked until implementation evidence proves it complete.
 - `[P]` means file-independent, not permission to run concurrent Spec Kit feature-writing commands.
-- Reviewer checklist state is controlled by Patrick and is not modified by `$speckit-implement`.
+- Reviewer checklist state is controlled by the repository owner (historically Patrick upstream) and is not modified by `$speckit-implement`.
 - Stop for a spec/plan revision if implementation cannot preserve legacy URL components, safely isolate
   migration downgrade, or meet the approved platform matrix.
 

@@ -53,13 +53,23 @@ Metric objects are created once at module import, following `ingestor/health.py`
 
 ## Pipeline Integration
 
-- `Pipeline._initialize_components` builds `TradePoller(on_trade=self._on_trade, redis=...,
-  settings=settings.polymarket, metadata=self._metadata_sync, on_state_change=...)`.
-  *Correction (REF-CMD-20 step 2):* the callback is now the public `Pipeline.process_trade`;
-  behaviour is unchanged.
+- **Monitor-only (archive writing disabled):** `Pipeline._initialize_components` builds
+  `TradePoller(on_trade=..., redis=..., settings=settings.polymarket, metadata=...,
+  on_state_change=...)` with the public `Pipeline.process_trade` (or equivalent) as Monitor.
+  Behaviour matches the pre-amendment single-callback path.
+- **Archive-enabled (amendment 2026-11-18):** wiring MUST pass an explicit fan-out: Archive writer
+  first, then Monitor (`process_trade`), per
+  [observation-boundary.md](observation-boundary.md#delivery-and-identity-retention-amendment-2026-11-18).
+  Legacy `on_trade`-only construction MUST NOT silently omit Archive when archive writing is
+  enabled. Slice 005 owns the Archive writer implementation; this contract owns the delivery order
+  and identity-retention rules.
 - `Pipeline._start_background_services` creates the poller task first, then the metadata sync task.
 - A `failed` transition records `PipelineStats.last_error` and increments `errors`; propagation to
   `PipelineState`, readiness, and CLI exit is slice 003's contract (G-016) and is not claimed here.
+- Archive tape `degraded` / `down` and `/ready` failure when the tape is down (archive enabled) are
+  owned by the slice **003 health amendment** (G-041), using the provisional SLOs in `Data.md`.
+  Checkpoint stall under policy (a) is owned here / in observation-boundary; it MUST feed that
+  health component rather than inventing a parallel readiness story in logs only.
 - `Pipeline.stop()` cancels the poller task, awaits it, then stops the metadata sync.
 
 ## Configuration Compatibility
@@ -72,6 +82,7 @@ Metric objects are created once at module import, following `ingestor/health.py`
 | `POLYMARKET_TRADES_COVERAGE` | absent | Optional, `all` (default) or `taker-only` | Additive |
 | `POLYMARKET_TRADES_POLL_INTERVAL_SECONDS` | absent | Optional, default 5, range 1–60 | Additive |
 | `POLYMARKET_TRADES_RECOVERY_HORIZON_SECONDS` | absent | Optional, default 600, range 60–3600 | Additive |
+| Archive writing enable flag (name finalized in 005 / settings) | absent | Optional boolean; default off until 005 lands | When true, fan-out MUST include Archive and policy (a) applies; when false, monitor-only delivery |
 
 Rules:
 
@@ -97,6 +108,10 @@ Rules:
   the tracker acquires trades with TradePoller")`.
 - `TradeEvent` is unchanged; `TradeEvent.from_websocket_message` remains for the deprecated handler and
   the strict parser lives in `ingestor/trade_rows.py`.
+- **Amendment 2026-11-18:** archive-enabled delivery consumes `TradeObservation` (identity + event +
+  provenance + raw when required). A fan-out / dual-consumer constructor (Archive + Monitor) is the
+  supported wiring; legacy `on_trade` remains as a Monitor-only or deprecation adapter. Exact type
+  names may land with slice 005 implement, but MUST honor observation-boundary fan-out and policy (a).
 
 ## Documentation Surfaces
 

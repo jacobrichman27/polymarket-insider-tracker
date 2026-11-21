@@ -23,7 +23,7 @@ Proposed execution order:
 2. `001-supported-trade-ingestion`
 3. `003-safe-observable-operation`
 4. `004-truthful-detection-contract`
-5. `005-research-trade-archive` (Phase A0 tape — **proposed**; directory created at `$speckit-specify`)
+5. `005-research-trade-archive` (Phase A0 tape — **specified**; activate this path on every Spec Kit command for the slice)
 6. `006-versioned-markets-knowability` (Phase A1 — proposed)
 7. `007-featured-enrichment` (Phase B — proposed)
 8. `008-labels-resolutions` (Phase C — proposed)
@@ -47,8 +47,10 @@ Before implementing an archive slice, register its owned gaps in
   `$speckit-specify` and maintained by `$speckit-clarify`.
 - Other `checklists/<domain>.md` files are reviewer-owned requirements-quality checklists generated later by
   `$speckit-checklist` from the approved review focus.
-- Agents leave new reviewer-owned checklist items unchecked. Patrick or a human reviewer he designates owns
-  the `[x]` decision. Checked items mean the written requirements passed review, not that code is complete.
+- Agents leave new reviewer-owned checklist items unchecked. The repository owner of this fork (or a human
+  reviewer they designate) owns the `[x]` decision. Checked items mean the written requirements passed
+  review, not that code is complete. Upstream evidence that names Patrick records original ownership
+  and past approvals only.
 
 ## Required Per-Slice Order
 

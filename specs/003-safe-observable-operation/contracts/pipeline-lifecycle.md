@@ -66,16 +66,24 @@ persistence, or dispatch) is recoverable, not terminal:
   scenario 3); it is never dispatched.
 - Assessment persistence failures are counted into `PipelineStats.errors` and surface as
   the `/health` top-level `last_error` (FR-013) without blocking an otherwise authorized
-  delivery attempt.
+  delivery attempt. They MUST NOT mark `trade_archive` `down` and MUST NOT delay or suppress
+  alert dispatch (constitution IV). Tape readiness failing `/ready` is about collection health,
+  not about suppressing a dispatch that already qualified.
 - Above-threshold ordering: the qualifying assessment is persisted as a pending row
   (`delivery_disposition='unrecorded'`) **before** formatting or any channel contact, and
   the same row is updated in place with the final disposition after dispatch (inserted
   afresh if the pending write failed). A formatter/dispatch failure or termination after an
   external delivery therefore cannot lose the durable research record; at worst the row
   truthfully keeps `unrecorded`.
-- The observation identity remains recorded at the durable ingestion boundary per the
-  slice-001 observation-boundary contract, so downstream processing is at-most-once: a
-  failed observation is not redelivered after a restart. Because the qualifying assessment
-  is durable before delivery, the only rows that can be missing after a crash are
-  below-threshold or skip rows whose single write failed; every such failure is observable
-  in health, logs, and counters.
+- **Monitor-only identity credit:** observation identity remains recorded at the durable
+  ingestion boundary per the historical slice-001 single-consumer path, so Monitor-side
+  processing is at-most-once after that credit.
+- **Archive-enabled identity credit (001 amendment 2026-11-18):** identity is retained only
+  after Archive durable insert (policy (a)); checkpoint stall applies. Monitor failure must not
+  revoke Archive credit. See
+  [`observation-boundary.md`](../../001-supported-trade-ingestion/contracts/observation-boundary.md)
+  and [`health-endpoints.md`](health-endpoints.md) `trade_archive` component.
+- Because the qualifying assessment is durable before delivery, the only assessment rows that can
+  be missing after a crash are below-threshold or skip rows whose single write failed; every such
+  failure is observable in health, logs, and counters. Missing **trades tape** rows are a separate
+  archive concern (policy (a) re-delivery / write-failure ledger), not assessment disposition.

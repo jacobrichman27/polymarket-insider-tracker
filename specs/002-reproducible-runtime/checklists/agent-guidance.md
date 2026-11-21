@@ -1,6 +1,6 @@
 # Agent Guidance Requirements-quality Review
 
-Reviewer-owned: only Patrick or his designated human reviewer may mark these items satisfied.
+Reviewer-owned: only the repository owner of this fork (or a human reviewer they designate) may mark these items satisfied.
 These are requirements-quality criteria, not agent-reported test results.
 
 - [ ] The root guidance accurately codifies approved practices without changing governance.

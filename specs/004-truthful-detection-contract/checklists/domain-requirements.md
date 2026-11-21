@@ -3,9 +3,9 @@
 **Purpose**: Reviewer-owned requirements-quality review of the 004 plan/design artifacts.
 **Created**: 2026-10-17 | **Feature**: [spec.md](../spec.md), [plan.md](../plan.md),
 [research.md](../research.md), [data-model.md](../data-model.md), [tasks.md](../tasks.md).
-**Ownership**: reviewer-owned. Agents must leave items unchecked; only Patrick or his
-designated human reviewer may mark criteria satisfied. `[ ]` = pending reviewer judgment,
-not implementation status.
+**Ownership**: reviewer-owned. Agents must leave items unchecked; only the repository owner
+of this fork (or a human reviewer they designate) may mark criteria satisfied. `[ ]` = pending
+reviewer judgment, not implementation status.
 
 ## Requirement Completeness
 

@@ -6,6 +6,13 @@ Defines the durable state that makes overlapping acquisition safe, the proof req
 boundary advances, the recovery path, the possible-data-loss state, and the crash semantics. It is
 implemented by `ingestor/observation_boundary.py` and driven by `ingestor/trade_poller.py`.
 
+**Amendment (2026-11-18, G-036–G-038 / G-037):** when archive writing is enabled, this contract also
+owns observation **fan-out**, **identity-retention authorization** under recovery policy **(a)**, and
+**checkpoint stall** until archive-durable success. Normative research schema lives in root
+[`Data.md`](../../../Data.md); slice `005-research-trade-archive` implements the archive writer and
+consumes this amended contract. Slice 005 must not redefine identity retention or invent a parallel
+proof model.
+
 ## Keys
 
 All keys share the prefix `polymarket:ingest:<source-id>:` where `source-id` is the first 12 hex
@@ -55,10 +62,15 @@ durable `T` is a complete-through claim, not a newest-seen watermark.
   `timestamp >= max(newest_accepted - horizon, emission_floor)`; older rows are `padding`.
 - `emission_floor` is set to the newest timestamp on first start and re-anchor and is preserved on
   normal proven advances. It therefore cannot drift when a sparse identity window is trimmed.
-- A candidate whose identity is in `W` is a `duplicate`; otherwise it is emitted oldest-first through
-  the trade callback, then its identity is added to `W` and to the pending pipeline write.
+- A candidate whose identity is in `W` is a `duplicate`; otherwise it is emitted oldest-first as a
+  full `TradeObservation` (event + identity + provenance + raw payload when captured) through the
+  delivery step in [Delivery and identity retention](#delivery-and-identity-retention-amendment-2026-11-18).
 - Multiple rows sharing a transaction hash are distinct observations unless their full identity tuple is
   equal; exact repeats within one page are suppressed once and counted as duplicates.
+
+**Emission credit (`EMITTED`) and identity retention are not the same as “callback returned.”** See
+the amendment section. Monitor-only (archive disabled) preserves the historical single-consumer path
+with the deprecation adapter below; archive-enabled runs must not use retain-always-after-callback.
 
 ## Possible-Data-Loss State
 
@@ -89,14 +101,33 @@ rates; that produces the possible-data-loss path above, not a silent skip.
 
 ## Crash Semantics
 
-- The identity of an observation is written after its callback returns, in the order of emission.
-- The checkpoint advances after the whole proven page is delivered.
-- A crash between a callback and its identity write re-delivers at most that one observation on
-  restart; no observation is lost silently. The scorer's existing deduplication window is the second
-  guard for that single case.
+### Monitor-only (archive writing disabled)
+
+- The identity of an observation is written after the Monitor consumer returns (success or logged
+  failure), in emission order—the historical single-callback behavior, retained for deprecation.
+- The checkpoint advances after the whole proven page is delivered under that rule.
+- A crash between Monitor return and identity write re-delivers at most that one observation on
+  restart. The scorer's existing deduplication window remains a second guard for alert side effects.
 - A crash between identity writes and the checkpoint write leaves `T` at its previous value; the next
   proof still holds because the identities were retained, and the candidates are suppressed as
   duplicates.
+
+### Archive-enabled (policy (a) — locked 2026-11-18)
+
+- Identity is written **only after** Archive reports durable insert success for that observation
+  (idempotent on `(trade_ts, observation_id)`), in emission order.
+- The checkpoint advances only after the whole proven page is **archive-credited** (every newly
+  emitted archive-destined observation on that page has a retained identity). See checkpoint stall.
+- A crash **after** Archive insert success and **before** identity write: the row is durable in
+  Postgres; identity is missing in Redis. Restart may re-deliver; Archive insert is an idempotent
+  no-op; then identity is retained. No silent loss of the fill.
+- A crash **before** Archive insert success: identity is not retained; restart re-delivers while the
+  observation remains reachable from acquisition / in-memory retry. No silent “handled” credit.
+- A crash between identity writes and the checkpoint write: same as monitor-only—`T` stays; retained
+  identities suppress duplicates on the next proof.
+
+**Rejected:** retain identity after Monitor returns when Archive has not succeeded; advance `T` past
+observations that are not yet archive-durable; marker-only advance with no re-delivery path.
 
 ## Loss Event
 
@@ -105,9 +136,100 @@ rates; that produces the possible-data-loss path above, not a silent skip.
  "detected_at": 1788983940, "recorded_at": 1788984320, "pages_examined": 2}
 ```
 
-Reasons: `horizon-expired`, `restart-beyond-horizon`, `continuity-mismatch`. Events are logged at
-`ERROR` when written, exposed in status (`loss_events`, newest five), and counted by the metric
+**Ingest-loss reasons** (Redis `loss-events`, unchanged): `horizon-expired`,
+`restart-beyond-horizon`, `continuity-mismatch`. Events are logged at `ERROR` when written, exposed
+in status (`loss_events`, newest five), and counted by the metric
 `polymarket_ingest_loss_events_total{reason}`.
+
+**Write-failure** (archive insert failed / abandoned) is **not** overloaded onto those three ingest
+reasons. Durable research ledger rows use class `write_failure` in Postgres `ingest_gap_events`
+(schema owned with slice 005 / `Data.md`). This contract authorizes that vocabulary so it is not an
+undeclared side channel; Redis may mirror write-failure for ops, but Postgres is authoritative for
+research completeness. Permanent unreachable fills under policy (a) still set
+`data_complete=false` for affected windows and alarm per `Data.md`.
+
+## Delivery and identity retention (amendment 2026-11-18)
+
+### Modes
+
+| Mode | When | Delivery shape |
+|---|---|---|
+| Monitor-only | Archive writing disabled | Legacy `on_trade(TradeEvent)` (or Monitor-only fan-out). Identity retention after Monitor returns (historical). |
+| Archive-enabled | Archive writing enabled | Ordered fan-out of `TradeObservation` per observation. Policy **(a)** below. |
+
+Enabling archive writing without Archive in the fan-out is a configuration / wiring error: it must
+not silently run as monitor-only.
+
+### Fan-out order (archive-enabled)
+
+Per observation, fixed order:
+
+1. **Archive** (required) — idempotent durable `trades` insert (and Core hot `raw_row_json` when
+   required by `Data.md`).
+2. **Monitor** (optional) — detect / score / alert path; receives at least `TradeEvent`, preferably
+   full `TradeObservation`. Must not assume the row is on the tape unless Archive already succeeded.
+3. **Future decision/execution** — reserved interface slot only; must not run order-placement code
+   under this slice.
+
+**Who authorizes identity retain and `EMITTED`:** this delivery step (poller / boundary driver)—**not**
+the Monitor. Monitor success or failure never authorizes or revokes identity retention.
+
+### Policy (a) — locked default
+
+- Successful Archive durable insert authorizes `record_identity` and emission credit (`EMITTED`) for
+  that observation.
+- Archive failure: **do not** retain identity; **do not** treat as `EMITTED` for boundary credit;
+  retry with bounded backoff; observation remains eligible for re-delivery while reachable.
+- Monitor is **still invoked** after Archive failure with the in-memory observation (failure
+  isolation); Monitor must not assume tape durability.
+- Monitor failure after Archive success: log / count only; **must not** undo Archive or revoke
+  identity.
+
+Policy **(b)** (advance with durable outbox + reconciler) is **not** the A0 default. Switching
+requires a later versioned amendment of this contract.
+
+### Checkpoint stall (archive-enabled, policy (a))
+
+Acquisition proof (`proven` / recovery / possible-data-loss) is unchanged. **Advancing the durable
+complete-through checkpoint `T`** additionally requires that every newly emitted archive-destined
+observation for that page has been archive-credited (identity retained under policy (a)).
+
+While any such observation is owed (delivered to Archive but not yet durable / not retained):
+
+- **Do not** advance `T` past that observation.
+- Retry Archive insert with bounded backoff.
+- Surface archive / collection health as degraded then down per the dual-use tape SLOs in `Data.md`
+  / slice 003 health amendment (provisional: degraded after 30s owed or a failure in 60s; down /
+  fail ready after 5 minutes owed or 5 minutes of failed attempts; quiet markets stay up).
+- **Rejected:** advancing `T` anyway during a long Archive outage to “keep the poller moving.”
+
+If, despite stalling, a fill becomes unreachable before it is ever inserted, record durable
+write-failure evidence, set `data_complete=false` for affected windows, and alarm. Denominators are
+not restored for that identity.
+
+### Exception isolation matrix (archive-enabled, policy (a))
+
+| Failure | Archive | Monitor | Identity / `EMITTED` |
+|---|---|---|---|
+| Archive raises / insert fails | Failure recorded; retry / stall | Still invoked (in-memory) | Do not retain; not emitted for boundary credit |
+| Monitor raises after Archive success | Unchanged | Logged / counted; must not undo Archive | Retain; emitted |
+| Monitor raises and Archive never succeeded | N/A | Logged / counted | Do not retain |
+
+Constitution IV (assessment persist must not block alert dispatch) remains internal to Monitor and
+orthogonal to Archive retain.
+
+### Deprecation adapter
+
+`TradePoller` may still accept legacy `on_trade: TradeCallback` by wrapping it as the Monitor
+consumer behind the fan-out driver. New wiring passes explicit Archive + Monitor consumers.
+Legacy single-callback mode without Archive is **monitor-only** (archive disabled)—not an accidental
+skip of the tape when archive writing is enabled.
+
+### Sequence diagrams (normative)
+
+Happy path, Archive fail, Monitor fail after Archive ok, and crash between Archive ok and
+`record_identity` are specified in [`Data.md`](../../../Data.md) under **Observation fan-out
+contract**. Implementations and tests MUST match those sequences under policy (a).
 
 ## Real and Fake Parity
 

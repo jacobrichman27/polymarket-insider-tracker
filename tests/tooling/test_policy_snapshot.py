@@ -5,7 +5,7 @@ values, closing the self-certification loophole where a threshold such as
 ``--max-complexity-allowed 5`` could be raised to ``6`` consistently in the
 verifier, the config file, and the CI workflow without any test failing.
 
-Golden policy (change requires Patrick's approval — see module docstring rule):
+Golden policy (change requires the repository owner's approval — see module docstring rule):
 - Complexipy threshold ``max-complexity-allowed`` is exactly ``5``.
 - Gate scope is exactly ``src tests scripts alembic conftest.py quality``.
 - Blocking CI jobs are exactly
@@ -18,7 +18,7 @@ The live tamper probe proves the threshold is semantic, not decorative: a
 score-6 function MUST fail under the golden policy.
 
 Golden-file changes in the same change that weakens the policy are rejected by
-review rule: they require Patrick's approval. Remote branch-protection wiring
+review rule: they require the repository owner's approval. Remote branch-protection wiring
 is NOT_INSPECTED and claimed by nobody.
 """
 

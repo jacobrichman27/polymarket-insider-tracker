@@ -1088,7 +1088,9 @@ Decide before or early in the first Spec Kit implementation slice; measure on li
 
 - Add `outcome_decider_class` on `markets` (ACDC who-decides axis), separate from knowability regime / `category`?
 - Separate approved widening of featuring (or a cheap wash/cluster path for sub-$5k flow) if wash-cleaned Core denominators are required later—do not silently re-promote wash-adjusted stats to Core without coverage.
-- Own the **slice 001 / 003 contract amendments** that encode the locked (a) + stall + SLO numbers into `observation-boundary.md` / health contracts (implementation still pending—decision is locked).
+- Slice **001 observation-boundary / status-and-config amendment** (2026-11-18): encodes locked (a) + stall + fan-out in contracts; runtime implement remains with slice 005.
+- Slice **003 health-endpoints / pipeline-lifecycle amendment** (2026-11-18): encodes `trade_archive` + provisional ready SLOs; runtime implement remains with slice 005 health wiring.
+- Slice **005-research-trade-archive** planned (2026-11-18): Phase A0 `spec.md` clarified + `plan.md` / data-model / contracts / quickstart; tasks → implement still ahead. Opt-in `ARCHIVE_ENABLED` default off; ledger-only completeness; no fingerprint columns in A0.
 
 **Design (deferred — not Phase A0 / 005 clarify)**
 

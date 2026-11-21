@@ -50,7 +50,10 @@ SPECIFY_FEATURE_DIRECTORY=specs/002-reproducible-runtime .specify/scripts/bash/c
 
 Do not let ignored local pointer state silently choose a slice. The built-in
 `checklists/requirements.md` is author-owned; domain requirements-quality checklists
-are human-reviewer-owned. Agents must not mark human criteria satisfied.
+are human-reviewer-owned. Agents must not mark human criteria satisfied. On this fork,
+the repository owner (or a human reviewer they designate) owns those `[x]` decisions
+and other living governance approvals in the constitution—not the upstream author.
+Historical evidence that names Patrick remains a factual record of past approvals.
 
 Update owned tasks and gaps with actual evidence. Append corrections and verification
 receipts rather than rewriting historical results to imply earlier success. Keep

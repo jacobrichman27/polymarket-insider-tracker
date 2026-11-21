@@ -1,18 +1,15 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.1 -> 2.0.0
-- Modified principles: Development Workflow rule 9 aligned with merged autonomous-merge policy
-  (PR138): independently reviewed, required-checks-green authorized merges proceed without
-  separate human merge approval; branch protection preserved; resulting commit/tree plus
-  main CI verified before completion. Requested directly by the owner to align PR138.
+- Version change: 2.0.0 -> 2.1.0
+- Modified principles: Governance and Development Workflow ownership transferred from the
+  upstream author (Patrick) to the repository owner of this fork (or a human reviewer they
+  designate). Historical approvals recorded under Patrick's name in evidence remain factual.
 - Added sections: none
 - Removed sections: none
-- Affected normative docs: .specify/memory/constitution.md,
-  specs/001-supported-trade-ingestion/tasks.md,
-  specs/002-reproducible-runtime/contracts/agent-guidance.md,
-  specs/002-reproducible-runtime/plan.md, specs/002-reproducible-runtime/tasks.md
-- Application/API/storage behavior change: none; required checks, independent review,
-  and branch protection remain.
+- Affected normative docs: .specify/memory/constitution.md, AGENTS.md, specs/README.md,
+  living reviewer-owned checklist ownership notes, specs/002 runtime-verification golden
+  policy approval language, tests/tooling/test_policy_snapshot.py docstring
+- Application/API/storage behavior change: none
 - Follow-up TODOs: none
 -->
 # Polymarket Insider Tracker Constitution
@@ -56,8 +53,8 @@ Public Python APIs, CLI flags, environment variables, storage schema, and docume
 remain compatible unless an approved specification authorizes a break and supplies a migration path.
 Supported Python versions MUST agree across project metadata, the lockfile, CI, and documentation.
 All required lint, format, type-check, migration, and test gates MUST be blocking and green, unless
-Patrick approves a time-bounded documented exception. Changes MUST be delivered as bounded Spec Kit
-slices and reviewable commits; unrelated refactors are out of scope.
+the repository owner approves a time-bounded documented exception. Changes MUST be delivered as
+bounded Spec Kit slices and reviewable commits; unrelated refactors are out of scope.
 
 ## Product and Operational Boundaries
 
@@ -84,10 +81,11 @@ slices and reviewable commits; unrelated refactors are out of scope.
    implement, and converge. The built-in `checklists/requirements.md` remains the author-owned
    spec-quality checklist.
 3. Specifications own what and why; plans own implementation details. Assumptions affecting product
-   scope, security, data semantics, compatibility, or user experience MUST be reviewed by Patrick
-   before implementation.
-4. Agents MUST leave newly generated reviewer-owned domain checklist items unchecked. Only Patrick
-   or a human reviewer he designates may mark those requirements-quality criteria satisfied.
+   scope, security, data semantics, compatibility, or user experience MUST be reviewed by the
+   repository owner before implementation.
+4. Agents MUST leave newly generated reviewer-owned domain checklist items unchecked. Only the
+   repository owner or a human reviewer they designate may mark those requirements-quality criteria
+   satisfied.
 5. Bug fixes and behavior changes MUST begin with a failing regression test when practical. If that
    is infeasible, the plan MUST record why and define equivalent reproducible evidence.
 6. Implementation MUST proceed in dependency-ordered, independently reviewable slices. Tests and
@@ -106,11 +104,15 @@ slices and reviewable commits; unrelated refactors are out of scope.
 ## Governance
 
 This constitution governs specifications, plans, tasks, implementation, reviews, and release claims.
-An amendment requires a documented rationale, Patrick's approval, an update to affected Spec Kit
-artifacts, and a migration or compatibility note when behavior changes. Versions follow semantic
-versioning: MAJOR for incompatible governance changes, MINOR for new or materially expanded
+An amendment requires a documented rationale, the repository owner's approval, an update to affected
+Spec Kit artifacts, and a migration or compatibility note when behavior changes. Versions follow
+semantic versioning: MAJOR for incompatible governance changes, MINOR for new or materially expanded
 principles, and PATCH for non-semantic clarification. Every specification, pull request, and
 convergence review MUST record compliance or an explicit approved exception. Unapproved exceptions
 are defects and block completion.
 
-**Version**: 2.0.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-10-17
+**Ownership note (2.1.0):** This fork's living governance is owned by the repository owner (or a
+human reviewer they designate). Upstream history and evidence that name Patrick record the original
+author's approvals and remain factual; they do not transfer ongoing approval authority.
+
+**Version**: 2.1.0 | **Ratified**: 2026-09-06 | **Last Amended**: 2026-11-18
