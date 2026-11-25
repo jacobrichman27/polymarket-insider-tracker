@@ -1,7 +1,10 @@
-"""Knowability classification lookup (override → series → template → model)."""
+"""Knowability classification lookup (override → series → question → template → model)."""
 
 from __future__ import annotations
 
+import hashlib
+import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
@@ -19,8 +22,9 @@ from polymarket_insider_tracker.ingestor.archive.knowability_templates import (
 )
 from polymarket_insider_tracker.storage.repos import KnowabilityRepository
 
-KNOWABILITY_POLICY_VERSION = "knowability.v1"
+KNOWABILITY_POLICY_VERSION = "knowability.v2"
 VALID_REGIMES = frozenset({"never_early", "always_latent", "windowed", "unknown"})
+_WHITESPACE = re.compile(r"\s+")
 
 
 @dataclass(frozen=True)
@@ -31,6 +35,12 @@ class KnowabilityClassification:
     template_id: str | None = None
     series_slug: str | None = None
     policy_version: str = KNOWABILITY_POLICY_VERSION
+
+
+@dataclass(frozen=True)
+class NormalizedQuestion:
+    text: str
+    key: str
 
 
 class ModelBudget(Protocol):
@@ -46,6 +56,17 @@ def onset_for(regime: str, knowable_from: datetime | None) -> datetime | None:
     if regime != "windowed":
         return None
     return knowable_from
+
+
+def normalize_question_text(question: str | None) -> NormalizedQuestion | None:
+    """Exact-title key: NFKC, casefold, collapse whitespace. Empty → None."""
+    if question is None:
+        return None
+    text = _WHITESPACE.sub(" ", unicodedata.normalize("NFKC", question).casefold()).strip()
+    if not text:
+        return None
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return NormalizedQuestion(text=text, key=digest)
 
 
 async def _lookup_caches(
@@ -64,6 +85,9 @@ async def _lookup_caches(
     series_hit = await _try_series(repo, series_slug)
     if series_hit is not None:
         return series_hit
+    question_hit = await _try_question(repo, question)
+    if question_hit is not None:
+        return question_hit
     if not TEMPLATE_MATCHING_ENABLED:
         return None
     return await _try_template(repo, question=question, category=category, stamp=stamp)
@@ -81,7 +105,7 @@ async def classify_market(
     budget: ModelBudget | None = None,
     now: datetime | None = None,
 ) -> KnowabilityClassification:
-    """Lookup order: override → series cache → template → optional Decisions."""
+    """Lookup: override → series → question → template → optional Decisions."""
     repo = KnowabilityRepository(session)
     stamp = now if now is not None else datetime.now(UTC)
     cached = await _lookup_caches(
@@ -187,6 +211,22 @@ async def _try_series(
     )
 
 
+async def _try_question(
+    repo: KnowabilityRepository, question: str | None
+) -> KnowabilityClassification | None:
+    normalized = normalize_question_text(question)
+    if normalized is None:
+        return None
+    row = await repo.latest_question_cache(normalized.key, KNOWABILITY_POLICY_VERSION)
+    if row is None:
+        return None
+    return KnowabilityClassification(
+        regime=row.regime,
+        label_source="question",
+        knowable_from=onset_for(row.regime, row.knowable_from),
+    )
+
+
 async def _try_template(
     repo: KnowabilityRepository,
     *,
@@ -219,18 +259,32 @@ async def _try_template(
     )
 
 
-async def _write_model_series(
+async def _write_model_caches(
     repo: KnowabilityRepository,
     *,
+    question: str,
     series_slug: str | None,
     regime: str,
     knowable_from: datetime | None,
     stamp: datetime,
 ) -> None:
-    if not series_slug or regime == "unknown":
+    if regime == "unknown":
         return
-    await repo.append_series_cache(
-        series_slug=series_slug,
+    if series_slug:
+        await repo.append_series_cache(
+            series_slug=series_slug,
+            policy_version=KNOWABILITY_POLICY_VERSION,
+            regime=regime,
+            known_at=stamp,
+            knowable_from=knowable_from,
+            label_source="model",
+        )
+    normalized = normalize_question_text(question)
+    if normalized is None:
+        return
+    await repo.append_question_cache(
+        question_key=normalized.key,
+        question_text=normalized.text,
         policy_version=KNOWABILITY_POLICY_VERSION,
         regime=regime,
         known_at=stamp,
@@ -256,8 +310,13 @@ async def _try_model(
     )
     regime = result.regime if result.regime in VALID_REGIMES else "unknown"
     knowable_from = onset_for(regime, _parse_onset(result.knowable_from_iso))
-    await _write_model_series(
-        repo, series_slug=series_slug, regime=regime, knowable_from=knowable_from, stamp=stamp
+    await _write_model_caches(
+        repo,
+        question=question,
+        series_slug=series_slug,
+        regime=regime,
+        knowable_from=knowable_from,
+        stamp=stamp,
     )
     source = "model" if regime != "unknown" else "unknown"
     return KnowabilityClassification(

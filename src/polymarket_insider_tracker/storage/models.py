@@ -352,6 +352,24 @@ class KnowabilityTemplateCacheModel(Base):
     label_source: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class KnowabilityQuestionCacheModel(Base):
+    """Exact normalized question-text knowability cache (cross condition_id)."""
+
+    __tablename__ = "knowability_question_cache"
+    __table_args__ = (
+        PrimaryKeyConstraint("question_key", "policy_version", "known_at"),
+        Index("idx_knowability_question_key", "question_key"),
+    )
+
+    question_key: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_version: Mapped[str] = mapped_column(Text, nullable=False)
+    known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    question_text: Mapped[str] = mapped_column(Text, nullable=False)
+    regime: Mapped[str] = mapped_column(Text, nullable=False)
+    knowable_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    label_source: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class KnowabilityOverrideModel(Base):
     """Append-on-change human knowability overrides."""
 

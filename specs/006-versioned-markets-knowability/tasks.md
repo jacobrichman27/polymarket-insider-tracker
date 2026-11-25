@@ -253,3 +253,9 @@ Task: tests/ingestor/test_outcome_repair_api_gamma_disagree.py
 - Services profile: **passed** (probe; redis-contract 52; migrations on `pit_verify_66580d29a13644e0b2116478d8ba3e92` head↔`-1`↔head through `006_research_trade_archive_a1`).
 - Burn-in `polymarket_tracker` was not migrated by these gates.
 - Full receipt: [`evidence/g044-g046-verification.md`](evidence/g044-g046-verification.md).
+
+## Follow-on (2026-11-25) — question-text cache
+
+- Table `knowability_question_cache` (Alembic `007_knowability_question_cache`); lookup after series, before template/model; model write-through for non-`unknown`.
+- Tests: `tests/ingestor/test_knowability_question_cache.py`.
+- Burn-in upgraded to `007_knowability_question_cache` (additive).

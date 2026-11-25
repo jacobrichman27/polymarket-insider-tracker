@@ -25,6 +25,7 @@ from polymarket_insider_tracker.storage.models import (
     FundingTransferModel,
     IngestGapEventModel,
     KnowabilityOverrideModel,
+    KnowabilityQuestionCacheModel,
     KnowabilitySeriesCacheModel,
     KnowabilityTemplateCacheModel,
     MarketVersionModel,
@@ -1025,7 +1026,7 @@ class MarketsRepository:
 
 
 class KnowabilityRepository:
-    """Knowability overrides and series/template caches."""
+    """Knowability overrides and series/template/question caches."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -1125,6 +1126,42 @@ class KnowabilityRepository:
         model = KnowabilityTemplateCacheModel(
             template_id=template_id,
             allowlist_version=allowlist_version,
+            known_at=known_at,
+            regime=regime,
+            knowable_from=knowable_from,
+            label_source=label_source,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
+
+    async def latest_question_cache(
+        self, question_key: str, policy_version: str
+    ) -> KnowabilityQuestionCacheModel | None:
+        result = await self.session.execute(
+            select(KnowabilityQuestionCacheModel)
+            .where(KnowabilityQuestionCacheModel.question_key == question_key)
+            .where(KnowabilityQuestionCacheModel.policy_version == policy_version)
+            .order_by(KnowabilityQuestionCacheModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def append_question_cache(
+        self,
+        *,
+        question_key: str,
+        question_text: str,
+        policy_version: str,
+        regime: str,
+        known_at: datetime,
+        label_source: str,
+        knowable_from: datetime | None = None,
+    ) -> KnowabilityQuestionCacheModel:
+        model = KnowabilityQuestionCacheModel(
+            question_key=question_key,
+            question_text=question_text,
+            policy_version=policy_version,
             known_at=known_at,
             regime=regime,
             knowable_from=knowable_from,

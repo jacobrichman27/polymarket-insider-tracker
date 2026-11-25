@@ -1,4 +1,4 @@
-"""Knowability lookup order: override → series → template → model."""
+"""Knowability lookup order: override → series → question → template → model."""
 
 from __future__ import annotations
 

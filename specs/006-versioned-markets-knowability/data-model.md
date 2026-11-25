@@ -18,22 +18,22 @@ Append-on-change dimension. Primary key `(condition_id, known_at)` (or equivalen
 | `question` / `series_slug` / template keys | text null | Classification inputs when available |
 | `info_knowability_regime` | text null | `never_early` / `always_latent` / `windowed` / `unknown` |
 | `knowable_from` | timestamptz null | Required semantics when regime is `windowed` |
-| `knowability_label_source` | text null | override / series / template / model / unknown |
+| `knowability_label_source` | text null | override / series / question / template / model / unknown |
 | `knowability_policy_version` | text null | Forward-applied policy id |
 | `source_version` | text null | Gamma/fetch provenance |
 | `raw_market_json` | jsonb null | Optional hot metadata capture (not required for repair acceptance) |
 
 **Validation:** Never mutate a prior `(condition_id, known_at)` row. Append only when attributes change or policy/model version bumps. Snapshot join: latest row with `known_at` ≤ `trade_ts`.
 
-### KnowabilitySeriesCache / KnowabilityTemplateCache
+### KnowabilitySeriesCache / KnowabilityQuestionCache / KnowabilityTemplateCache
 
-Versioned cache entries (append or version column). Keys: `series_slug` or normalized template id + `policy_version` / `model_version`.
+Versioned cache entries (append-on-change). Keys: `series_slug`, SHA-256 of normalized question text, or allowlisted template id — each scoped by `policy_version` / allowlist version.
 
 | Field | Notes |
 | --- | --- |
 | regime | Cached classification |
-| onset_policy | For `windowed` series/templates |
-| confidence | Optional |
+| onset_policy / `knowable_from` | For `windowed` |
+| `question_text` | Question cache only — normalized title for inspection |
 | label_source | Path that produced the cache write |
 
 Human overrides: durable append-on-change table keyed by `series_id` or `template_id` (regime, optional onset policy, notes, `known_at`, policy version). Optional seed file may bootstrap. Wins lookup order until superseded by a newer override version.

@@ -120,7 +120,17 @@
 
 **Rationale:** Operator asked for a clear, small, non-LLM definition; expandable only via versioned allowlist bump.
 
-**Amendment 2026-11-25:** Product stamp is `knowability.templates.v1` (planning formerly called this `a1.v1`). Policy stamp is `knowability.v1`.
+**Amendment 2026-11-25:** Product stamp is `knowability.templates.v1` (planning formerly called this `a1.v1`). Policy stamp started as `knowability.v1`.
+
+**Amendment 2026-11-25 (later):** Policy stamp bumped to `knowability.v2`. Decisions regime choice copy is principle-based (privileged non-public edge vs public-only signals); examples removed so the model generalizes to unfamiliar market shapes. Existing `v1`-stamped rows remain historical; new classifications use `v2`.
+
+## Decision 19 — Exact question-text cache (2026-11-25)
+
+**Decision:** After series cache and before template/model, look up `knowability_question_cache` keyed by SHA-256 of NFKC/casefold/whitespace-normalized question text + policy version. Successful non-`unknown` Decisions results write through. Same `condition_id` warm-dedupe remains; this covers **new** condition ids that reuse an identical title when `seriesSlug` is absent.
+
+**Rationale:** Operator — Gamma often omits series; identical titles should not re-spend Decisions. Exact title only (no cue/template invention).
+
+**Alternatives considered:** Log-only without reuse (rejected); fuzzy/slotted title matching (deferred to templates when re-enabled).
 
 ## Decision 18 — Disable cue matching (2026-11-24)
 

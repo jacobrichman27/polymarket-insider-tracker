@@ -8,16 +8,19 @@
 
 1. Human override (series or template id) — durable Postgres override table (append-on-change); optional seed file may bootstrap
 2. Gamma `seriesSlug` cache
-3. **Allowlisted deterministic template match** — **before** any model call when matching is enabled. Normative allowlist: [knowability-templates.md](knowability-templates.md) (`knowability.templates.v1` reserves `CRYPTO_UP_OR_DOWN_WINDOW`, `SPORTS_MATCHUP_WINNER`, `EARNINGS_BEAT_EPS` but **ships with matching disabled** / short-circuited; miss → Decisions when enabled).
-4. Optional cheap model on miss/low confidence **only when effectively enabled** (see below)
+3. **Exact question-text cache** — NFKC + casefold + collapsed whitespace; key = SHA-256 of normalized text scoped by `knowability` policy version. Hits reuse a prior Decisions (or seeded) regime across different `condition_id`s with the same title. `label_source=question`.
+4. **Allowlisted deterministic template match** — **before** any model call when matching is enabled. Normative allowlist: [knowability-templates.md](knowability-templates.md) (`knowability.templates.v1` reserves `CRYPTO_UP_OR_DOWN_WINDOW`, `SPORTS_MATCHUP_WINNER`, `EARNINGS_BEAT_EPS` but **ships with matching disabled** / short-circuited; miss → Decisions when enabled).
+5. Optional cheap model on miss/low confidence **only when effectively enabled** (see below)
 
 **Template (plain meaning):** a normalized question pattern with specifics slotted out so many listings share one cached regime when Gamma series is missing or too coarse. Ids come only from the versioned allowlist; the model MUST NOT invent ids. Empty allowlist / disabled matching is OK.
 
-Record `knowability_label_source` on the markets version (and optional stamp on new trades inserts). Successful model classifications MUST write through to the **series** cache when a series id is present (not into free-form templates).
+**Question cache (plain meaning):** reuse the regime for an identical market title when series/template miss. Does **not** generalize across different titles (e.g. Austin 28–29°F vs 34–35°F stay distinct).
+
+Record `knowability_label_source` on the markets version (and optional stamp on new trades inserts). Successful non-`unknown` model classifications MUST write through to the **series** cache when a series id is present **and** to the **question** cache when the question normalizes non-empty (not into free-form templates).
 
 **Default model adapter:** OpenAI Decisions API (`POST /v1/decisions`, `gpt-6-luna`) with bounded `choice` (and related) questions for regime classification. Version the adapter; credentials via existing secret-safe config patterns.
 
-**Policy stamp:** `knowability.v1` (series/override policy version in product code).
+**Policy stamp:** `knowability.v2` (series/override policy version in product code; `v1` = initial Decisions copy; `v2` = principle-based privileged-edge definitions without category examples).
 
 ## Model-on-miss enablement & spend guardrails
 
@@ -45,4 +48,4 @@ New markets version on classification/upgrade. **Do not** rewrite historical tra
 
 ## Policy versioning
 
-`knowability_policy` version stamps (`knowability.v1`) apply forward. Do not mix versions silently in one analysis slice.
+`knowability_policy` version stamps (`knowability.v2` current) apply forward. Do not mix versions silently in one analysis slice.

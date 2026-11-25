@@ -28,7 +28,12 @@ def test_choice_payload_matches_decisions_create_contract() -> None:
     assert q0["name"] == REGIME_QUESTION_NAME
     assert [c["value"] for c in q0["choices"]] == list(REGIME_CHOICES)
     assert all("description" in c for c in q0["choices"])
-    assert "regime" in q0["instructions"].lower() or "insider" in q0["instructions"].lower()
+    instructions = q0["instructions"].lower()
+    assert "privileged" in instructions
+    assert "public" in instructions
+    never_early = next(c for c in q0["choices"] if c["value"] == "never_early")
+    assert "e.g." not in never_early["description"].lower()
+    assert "crypto" not in never_early["description"].lower()
 
 
 def test_extract_regime_from_documented_choice_answer() -> None:

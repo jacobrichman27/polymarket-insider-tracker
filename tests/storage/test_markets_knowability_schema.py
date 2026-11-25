@@ -16,6 +16,7 @@ from polymarket_insider_tracker.storage.models import (
     ArchiveCollectorStateModel,
     Base,
     KnowabilityOverrideModel,
+    KnowabilityQuestionCacheModel,
     KnowabilitySeriesCacheModel,
     KnowabilityTemplateCacheModel,
     MarketVersionModel,
@@ -27,6 +28,7 @@ MARKETS_KNOWABILITY_TABLES = (
     "markets",
     "knowability_series_cache",
     "knowability_template_cache",
+    "knowability_question_cache",
     "knowability_overrides",
 )
 
@@ -40,6 +42,8 @@ def test_markets_knowability_models_expose_required_columns() -> None:
     assert {"series_slug", "policy_version", "regime"} <= series_cols
     template_cols = {col.name for col in KnowabilityTemplateCacheModel.__table__.columns}
     assert {"template_id", "allowlist_version", "regime"} <= template_cols
+    question_cols = {col.name for col in KnowabilityQuestionCacheModel.__table__.columns}
+    assert {"question_key", "question_text", "policy_version", "regime"} <= question_cols
     override_cols = {col.name for col in KnowabilityOverrideModel.__table__.columns}
     assert {"key_type", "key_id", "regime", "policy_version"} <= override_cols
 

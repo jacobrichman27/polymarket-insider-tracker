@@ -25,35 +25,44 @@ _REGIME_CHOICE_OPTIONS: tuple[dict[str, str], ...] = (
     {
         "value": "never_early",
         "description": (
-            "No meaningful private lead is possible before the fact is public "
-            "(e.g. short-horizon spot crypto / price-at-a-time path markets)."
+            "No meaningful non-public informational edge exists: anyone who "
+            "could know the settlement fact early has only the same public "
+            "signals as everyone else (no privileged knowledge)."
         ),
     },
     {
         "value": "always_latent",
         "description": (
-            "Privileged knowledge can exist at any time with no hard onset "
-            "(e.g. earnings, most sports, geopolitics). Do not use windowed just "
-            "because a release is scheduled if insiders may already know."
+            "Some party can hold privileged, non-public knowledge of the "
+            "eventual settlement fact at any time before it is public, with "
+            "no hard onset that first creates that possibility."
         ),
     },
     {
         "value": "windowed",
         "description": (
-            "Insiders can know only after a definite onset (e.g. awards after "
-            "votes are locked; sealed tallies before certification). Use sparingly."
+            "Privileged knowledge of the settlement fact becomes possible "
+            "only after a definite onset event; before that onset, no such "
+            "edge exists. Prefer always_latent when the onset is soft or "
+            "insiders may already know."
         ),
     },
     {
         "value": "unknown",
-        "description": "The listing does not clearly fit the regimes above.",
+        "description": (
+            "The listing does not clearly establish whether a privileged "
+            "non-public edge exists."
+        ),
     },
 )
 
 _REGIME_INSTRUCTIONS = (
-    "Choose how early an insider could know the eventual settlement fact for "
-    "this prediction-market listing, before that fact is public. Pick exactly "
-    "one regime from the supplied choices."
+    "Classify information-knowability for this prediction-market listing: "
+    "could someone with a privileged, non-public channel know the eventual "
+    "settlement fact before that fact is public? Judge the structure of the "
+    "question, not resemblance to familiar categories. Ignore ordinary "
+    "forecast skill, public data, or widely available models—those are not "
+    "insider edges. Pick exactly one regime from the supplied choices."
 )
 
 
