@@ -1,4 +1,4 @@
-"""Checkpoint stall and bounded archive retry (Phase A0)."""
+"""Checkpoint stall and bounded archive retry."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Research trade archive Phase A0 tables.
+"""Research trade archive trades-tape tables.
 
 Adds partitioned ``trades``, durable ``ingest_gap_events``, and
 ``archive_collector_state``. Pre-creates daily UTC partitions for a

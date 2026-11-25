@@ -126,6 +126,10 @@ tests/
 
 Revise after 72h metrics; do not ship unbounded “keep forever with no budget.”
 
+### Measured revision (2026-11-25)
+
+See [`evidence/capacity-burn-in.md`](evidence/capacity-burn-in.md). Live dry-run (~45.7 h wall): ~**810k rows/day**, ~**1.75 KiB/row** DB all-in, `partition_miss_total=0`, revised ~**500 GiB** 90-day primary sketch (safety≥2). Growth band unchanged. **Completeness:** laptop + full monitor path did **not** sustain gap-free ingest (repeated `horizon-expired`); place continuous archive on an always-on host and/or isolate monitor latency from acquisition cadence as follow-on ops/engineering—not a change to partition grain or interim retain defaults.
+
 ## Dependencies / ownership
 
 | Concern | Owner |

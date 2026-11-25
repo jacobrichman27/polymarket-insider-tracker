@@ -1,4 +1,4 @@
-"""Idempotent trades-tape writer (Phase A0)."""
+"""Idempotent trades-tape writer."""
 
 from __future__ import annotations
 

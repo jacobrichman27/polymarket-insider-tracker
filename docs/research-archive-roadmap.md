@@ -2,7 +2,7 @@
 
 This document is the implementation roadmap for landing [`Data.md`](../Data.md) in this repository as a phased Spec Kit series. Normative collection rules, field tables, and the foundation-gap write-up live in `Data.md`. This roadmap owns how we sequence delivery, how we wire the process, and how we stay extendible for a later authorized trading consumer.
 
-**Status:** Phase A0 (`005-research-trade-archive`) is implemented and on `main` (`e428c5f`, 2026-11-21). Next: Spec Kit for Phase **A1** (`006-versioned-markets-knowability`), or close G-035–G-043 with capacity/ops evidence. Keep this roadmap aligned with the slice plan rather than maintaining a conflicting fork.
+**Status:** Phase A0 on `main`; **G-035–G-043 Closed** with capacity burn-in receipt 2026-11-25 ([`capacity-burn-in.md`](../specs/005-research-trade-archive/evidence/capacity-burn-in.md)). Phase A1 (`006-versioned-markets-knowability`) **planned** 2026-11-23. Next: reviewer checklist / `$speckit-tasks` with `SPECIFY_FEATURE_DIRECTORY=specs/006-versioned-markets-knowability` (do not migrate the live burn-in DB without consent). Follow-on ops: always-on host / monitor-vs-acquisition isolation for gap-free continuous tape.
 
 ## Work queue
 
@@ -13,14 +13,14 @@ This document is the implementation roadmap for landing [`Data.md`](../Data.md) 
 | amend-001-boundary | Own a slice 001 amendment to `observation-boundary.md` / `status-and-config.md` for identity-retention timing, fan-out failure isolation, and any write-failure / reconciliation loss vocabulary before archive implement | **done 2026-11-18 (contract)** — policy (a) + stall + fan-out encoded; **runtime landed in 005** (`e428c5f`). Next was `amend-003-health` |
 | amend-003-health | Own a slice 003 amendment to health/`/ready` for an archive tape component (degraded vs down, backlog SLO) when archive writing is enabled — reject “leave /ready alone” | **done 2026-11-18 (contract)** — `trade_archive` + provisional SLOs in health-endpoints; **runtime landed in 005** (`e428c5f`) |
 | specify-005-a0 | Author Spec Kit slice for Phase **A0** only: observation bus, durable `trades`, gap durability, identity handoff — depends on amended 001 and 003 health contracts; no blocking Gamma/Jev on the insert path. Activate with `SPECIFY_FEATURE_DIRECTORY=specs/005-research-trade-archive` only after the directory exists | **done 2026-11-18** — through analyze + remediation; **human validation 2026-11-20** (T001); **implement done 2026-11-21** (`e428c5f`) |
-| specify-006-a1 | Author Spec Kit slice for Phase **A1**: versioned `markets`, **Gamma outcome repair + KPI first**, then knowability caches / optional Jev — async / non-blocking relative to A0 emission | pending |
+| specify-006-a1 | Author Spec Kit slice for Phase **A1**: versioned `markets`, **Gamma outcome repair + KPI first**, then knowability caches / optional Jev — async / non-blocking relative to A0 emission | **tasks generated 2026-11-24** — next `$speckit-analyze` → human validation (T001) → implement |
 | outcome-repair-kpi | Wire `outcome_repair_status` metrics/alarms; gate Phase C primary labels on repair quality (see Data.md Outcome-repair quality) | pending |
 | label-schedule-fidelity | Phase C: durable due-queue + catch-up for +5m/+1h/+24h (and resolution) label arms; persist `label_schedule_*`; KPI beside tape gaps; primary gate (see Data.md Label schedule fidelity) | pending |
 | clarify-handoff | After the 001 amendment path is owned: adopt the Data.md **Observation fan-out contract** (sequence diagrams + isolation matrix) into `observation-boundary.md`; encode locked policy **(a)** + checkpoint stall; reject marker-only, retain-always single callback, and 005-local parallel proof. Fingerprint/`log_index` stays Phase B. | pending |
 | defer-fingerprint | Phase B owns strong vs weak fill fingerprint + `fingerprint_version`; A0 insert key stays `(trade_ts, observation_id)`; optional provisional weak column for rematerialization only. Fingerprint-dependent market aggregates are not primary-analysis-ready until B locks (see Data.md Canonical tables). Observation grain ≠ match grain is already correct for the tape. Also Phase B: **order as-of enrichment** (`live_as_of` vs `fully_enriched`) so rule-6 burst/rank/canonical-leg does not silently disagree with live after receipts | pending |
 | burn-in-policy | Encode `archive_start_at` burn-in (calendar horizon + `data_complete` rate) in A0/B analysis contracts and exports; windowed Core features not analysis-ready before burn-in | pending |
 | plan-schema-a0 | Plan A0 Alembic (`trades`, `ingest_gap_events` per Data.md gap schema), idempotent insert contract, write-failure vs ingest-loss `data_complete` behavior, and provisional partition/index/retention/disk budget | **done 2026-11-18** — `005` `plan.md` / `data-model.md` / `contracts/archive-persistence.md` |
-| implement-tape-a0 | Implement the A0 archive writer and its tests while keeping the monitor path compatible — **only after** `register-archive-gaps` and the 001/003 amendments are owned | **done 2026-11-21** — opt-in `ARCHIVE_ENABLED` tape + fan-out/stall/ledger/health on `main` (`e428c5f`); Phase 8 local verify + converge recorded; G-035–G-043 remain Open until capacity/ops evidence |
+| implement-tape-a0 | Implement the A0 archive writer and its tests while keeping the monitor path compatible — **only after** `register-archive-gaps` and the 001/003 amendments are owned | **done 2026-11-21** — opt-in `ARCHIVE_ENABLED` tape on `main` (`e428c5f`); Phase 8 verify + converge; **G-035–G-043 Closed 2026-11-25** after capacity burn-in (~810k rows/day, partition_miss=0; horizon gaps under laptop+monitor noted as follow-on) |
 | defer-a1-b-d | Register A1 and Phase B through D slices and gaps without implementing them in the A0 slice | pending |
 | extensibility-planes | Encode the data, decision, and execution plane boundaries in the A0 specification so future trading can plug in without a rewrite | **done 2026-11-18** — FR-018 / User Story 5 in `005` spec; keep plan from inventing dormant execution modules |
 
@@ -295,16 +295,16 @@ Phase D owns export policy details. This section only freezes the principle: the
 ## Suggested next concrete steps
 
 1. ~~Update [`specs/README.md`](../specs/README.md) proposed order~~ — done for proposed `005`–`009`; refresh activation examples again when `006`+ directories exist.
-2. ~~Register archive gaps~~ — G-035–G-043 owned; keep dispositions updated through A1+ converge. Close Open A0 gaps only with capacity/ops evidence.
+2. ~~Register archive gaps~~ — G-035–G-043 **Closed 2026-11-25** (implement + capacity receipt).
 3. ~~001 boundary amendment~~ / ~~003 health amendment~~ — contracts done; runtime on `main` via `005` (`e428c5f`).
 4. ~~Specify / plan / implement Phase A0~~ — done 2026-11-21 (`e428c5f`).
-5. Optionally gather 72h capacity evidence to close or re-disposition G-035–G-043.
-6. Run `$speckit-specify` for Phase **A1** (`006-versioned-markets-knowability`): versioned markets, Gamma outcome repair + KPI first, then knowability caches / optional Jev — async / non-blocking relative to A0 emission. Set `SPECIFY_FEATURE_DIRECTORY` only after the directory exists.
+5. ~~Capacity burn-in / G-043 sizing~~ — measured 2026-11-25; plan revised; follow-on always-on/gap-free under full monitor.
+6. ~~Specify / clarify / plan / checklist / tasks for Phase A1~~ — `tasks.md` 2026-11-24. Next: `$speckit-analyze` → human validation (T001) → implement (disposable DB; do not harm live burn-in).
 7. Only then open Phase B featuring and enrichment (`defer-fingerprint`, label schedule, burn-in).
 
 ## Risks to manage explicitly
 
-**Volume.** An all-participant global tape is heavy. A0 must ship with provisional daily partitions, index sketch, ~90-day interim primary retain/detach, disk budget, and alarms—not a qualitative warning that “Phase D will handle it.” Recompute rows/day after 72h of live metrics.
+**Volume.** An all-participant global tape is heavy. A0 ships provisional daily partitions, index sketch, ~90-day interim primary retain/detach, disk budget, and alarms. **Measured 2026-11-25:** ~810k rows/day, ~1.75 KiB/row → ~500 GiB 90d sketch; laptop+monitor path still suffers repeated `horizon-expired` (see capacity-burn-in receipt).
 
 **Phase A overload.** Do not re-bundle A0+A1 into one first slice. Metadata cold starts on a 5s poll will starve acquisition and monitoring if admit blocks emission.
 

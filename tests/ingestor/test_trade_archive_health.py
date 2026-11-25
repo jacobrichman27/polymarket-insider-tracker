@@ -1,4 +1,4 @@
-"""trade_archive readiness SLO mapping (Phase A0)."""
+"""trade_archive readiness SLO mapping."""
 
 from __future__ import annotations
 

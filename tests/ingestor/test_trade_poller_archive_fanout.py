@@ -1,4 +1,4 @@
-"""Archive-enabled TradePoller fan-out isolation matrix (Phase A0)."""
+"""Archive-enabled TradePoller fan-out isolation matrix."""
 
 from __future__ import annotations
 

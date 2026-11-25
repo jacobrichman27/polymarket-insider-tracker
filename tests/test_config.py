@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING, TypeVar
 import pytest
 from pydantic import ValidationError
 
+from polymarket_insider_tracker.archive_defaults import (
+    DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY,
+)
 from polymarket_insider_tracker.config import (
     ArchiveSettings,
     DatabaseSettings,
@@ -751,6 +754,16 @@ class TestSettings:
 
         assert settings.archive.enabled is False
         assert settings.archive.raw_retention is True
+        assert settings.archive.outcome_repair_enabled is False
+        assert settings.archive.outcome_repair_lag_seconds == 300
+        assert settings.archive.outcome_repair_unrepaired_max_ratio == 0.05
+        assert settings.archive.knowability_model_enabled is True
+        assert (
+            settings.archive.knowability_model_max_calls_per_day
+            == DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY
+        )
+        assert settings.archive.knowability_model_effectively_enabled is False
+        assert settings.archive.outcome_repair_effectively_enabled is False
 
     def test_archive_settings_can_enable_via_env(self) -> None:
         with env_context(
@@ -758,6 +771,8 @@ class TestSettings:
                 "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
                 "ARCHIVE_ENABLED": "true",
                 "ARCHIVE_RAW_RETENTION": "false",
+                "ARCHIVE_OUTCOME_REPAIR_ENABLED": "true",
+                "ARCHIVE_KNOWABILITY_MODEL_API_KEY": "sk-test",
             },
             clear=True,
         ):
@@ -765,19 +780,46 @@ class TestSettings:
 
         assert settings.archive.enabled is True
         assert settings.archive.raw_retention is False
+        assert settings.archive.outcome_repair_effectively_enabled is True
+        assert settings.archive.knowability_model_effectively_enabled is True
+
+    def test_knowability_model_force_off_even_with_credentials(self) -> None:
+        with env_context(
+            {
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "ARCHIVE_KNOWABILITY_MODEL_ENABLED": "false",
+                "ARCHIVE_KNOWABILITY_MODEL_API_KEY": "sk-test",
+            },
+            clear=True,
+        ):
+            settings = Settings()
+
+        assert settings.archive.knowability_model_credentials_present is True
+        assert settings.archive.knowability_model_effectively_enabled is False
 
     def test_redacted_summary_includes_archive_flags_without_secrets(self) -> None:
         with env_context(
             {
                 "DATABASE_URL": "postgresql+psycopg://user:secret@localhost/db",
                 "ARCHIVE_ENABLED": "true",
+                "ARCHIVE_KNOWABILITY_MODEL_API_KEY": "sk-super-secret",
             },
             clear=True,
         ):
             summary = Settings().redacted_summary()
 
-        assert summary["archive"] == {"enabled": "True", "raw_retention": "True"}
+        assert summary["archive"] == {
+            "enabled": "True",
+            "raw_retention": "True",
+            "outcome_repair_enabled": "False",
+            "outcome_repair_lag_seconds": "300",
+            "outcome_repair_unrepaired_max_ratio": "0.05",
+            "knowability_model_enabled": "True",
+            "knowability_model_max_calls_per_day": str(DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY),
+            "knowability_model_api_key": "(set)",
+        }
         assert "secret" not in str(summary)
+        assert "sk-super-secret" not in str(summary)
 
     def test_redacted_summary_describes_the_trades_source(self) -> None:
         """The polymarket block names the supported source and the legacy disposition."""

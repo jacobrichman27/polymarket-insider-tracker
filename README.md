@@ -141,7 +141,7 @@ Leave alert variables empty to run without notifications. Risk assessments can s
 
 Prefer `--dry-run` (or `DRY_RUN=true`) until you are ready: the pipeline still scores and can persist assessments with `delivery_disposition="dry_run"`, but it sends **no** notifications and writes **no** Redis delivery-dedup keys.
 
-### Research trades tape (Phase A0, opt-in)
+### Research trades tape (opt-in)
 
 `ARCHIVE_ENABLED` defaults to **off** so upgrades stay monitor-only. When you turn it on (after migrating to head):
 
@@ -150,6 +150,15 @@ Prefer `--dry-run` (or `DRY_RUN=true`) until you are ready: the pipeline still s
 3. Dry-run **still writes** the `trades` tape and gap ledger; it only suppresses real Discord/Telegram delivery.
 
 Capacity assumptions (daily partitions, ~90-day primary retain/detach, raw-on disk budget, disk ≥70% ops alarm) live in `specs/005-research-trade-archive/quickstart.md` and `Data.md` Provisional capacity.
+
+### Versioned markets & outcome repair (opt-in)
+
+Archive-on warms append-on-change `markets` and knowability caches; it does **not** enable outcome repair by itself.
+
+1. Keep `ARCHIVE_OUTCOME_REPAIR_ENABLED=false` until you want analysis-eligible inserts. Turning it on (with archive on) stamps durable `repair_enabled_at` once; only rows with observed/insert time ≥ cutover enter repair/KPI.
+2. Knowability model-on-miss defaults intent-on (`ARCHIVE_KNOWABILITY_MODEL_ENABLED=true`) but is **effective only** when `ARCHIVE_KNOWABILITY_MODEL_API_KEY` is set; force off with `false`. Daily UTC budget defaults to 10000 Decisions calls (`gpt-6-luna`). Template allowlist version `knowability.templates.v1` reserves three ids but **cue matching is disabled** (prefer miss → series/Decisions).
+3. Repair KPI may surface an optional `outcome_repair` diagnostic; it must **not** alone mark `trade_archive` down or fail `/ready`.
+4. Primary win/loss analysis joins should require `outcome_repair_status` ∈ {`ok`, `not_needed`} (or an explicit unrepaired sensitivity stratum). This archive layer does not implement labels.
 
 When delivery is enabled:
 
@@ -211,6 +220,12 @@ A recoverable `degraded` trade source with recent successful fetches can still b
 | `DETECTOR_PERSIST_ASSESSMENTS` | No | `true` | Persist every signal-bearing risk assessment |
 | `ARCHIVE_ENABLED` | No | `false` | Opt-in research trades tape (fan-out + policy-(a) stall + `trade_archive` ready) |
 | `ARCHIVE_RAW_RETENTION` | No | `true` | Store Core hot `raw_row_json` when archive is on (off only via versioned cost change) |
+| `ARCHIVE_OUTCOME_REPAIR_ENABLED` | No | `false` | Forward-only async outcome repair (requires archive on) |
+| `ARCHIVE_OUTCOME_REPAIR_LAG_SECONDS` | No | `300` | Post-cutover thin `not_attempted` lag KPI |
+| `ARCHIVE_OUTCOME_REPAIR_UNREPAIRED_MAX_RATIO` | No | `0.05` | Unrepaired ceiling among thin post-cutover rows |
+| `ARCHIVE_KNOWABILITY_MODEL_ENABLED` | No | `true` | Model-on-miss intent; `false` forces off |
+| `ARCHIVE_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY` | No | `10000` | Hard UTC-day Decisions call budget |
+| `ARCHIVE_KNOWABILITY_MODEL_API_KEY` | No | — | OpenAI Decisions API key (secret; absent → model off) |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 | `DRY_RUN` | No | `false` | Skip sending alerts (same idea as `--dry-run`) |
 | `HEALTH_PORT` | No | `8080` | Health / metrics HTTP port |

@@ -8,6 +8,7 @@ set from ``Settings`` with ``build_components`` when nothing was installed.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import time
@@ -34,6 +35,7 @@ from polymarket_insider_tracker.detector.size_anomaly import SizeAnomalyDetector
 from polymarket_insider_tracker.ingestor.archive import gap_ledger
 from polymarket_insider_tracker.ingestor.archive.health import ArchiveHealthSignals
 from polymarket_insider_tracker.ingestor.archive.metrics import PrometheusArchiveMetrics
+from polymarket_insider_tracker.ingestor.archive.workers import MarketWarmCoordinator
 from polymarket_insider_tracker.ingestor.archive.writer import (
     ArchiveMetrics,
     ArchiveWriter,
@@ -160,6 +162,7 @@ async def build_components(
     on_trade: Callable[[TradeEvent], Awaitable[None]],
     on_ingestion_state: Callable[[IngestionState], None],
     archive_health: ArchiveHealthSignals | None = None,
+    market_warm: MarketWarmCoordinator | None = None,
 ) -> PipelineComponents:
     """Assemble the production collaborators from ``settings``.
 
@@ -179,6 +182,7 @@ async def build_components(
             on_trade,
             on_ingestion_state,
             archive_health,
+            market_warm,
         )
     except Exception:
         if db_manager is not None:
@@ -195,6 +199,7 @@ def _assemble(
     on_trade: Callable[[TradeEvent], Awaitable[None]],
     on_ingestion_state: Callable[[IngestionState], None],
     archive_health: ArchiveHealthSignals | None,
+    market_warm: MarketWarmCoordinator | None,
 ) -> PipelineComponents:
     logger.debug("Initializing Polygon client...")
     polygon_client = PolygonClient(
@@ -243,7 +248,9 @@ def _assemble(
     abandon_write = None
     if settings.archive.enabled:
         health = archive_health if archive_health is not None else ArchiveHealthSignals()
-        archive_write = bind_archive_write(settings, db_manager, source, health)
+        archive_write = bind_archive_write(
+            settings, db_manager, source, health, market_warm=market_warm
+        )
         loss_mirror = bind_loss_mirror(db_manager, source)
         abandon_write = bind_abandon_write(db_manager, source, health)
     trade_poller = TradePoller(
@@ -283,6 +290,7 @@ def bind_archive_write(
     db_manager: DatabaseManager,
     source: str,
     health: ArchiveHealthSignals,
+    market_warm: MarketWarmCoordinator | None = None,
 ) -> Callable[[TradeObservation], Awaitable[bool]]:
     raw_retention = settings.archive.raw_retention
     metrics = PrometheusArchiveMetrics()
@@ -296,12 +304,31 @@ def bind_archive_write(
         health.mark_attempt(now, failed=not ok)
         if ok:
             health.clear_owed(observation.identity)
+            _schedule_market_warm(settings, db_manager, observation, market_warm)
         else:
             metrics.record_write_failure("persist")
         publish_owed_metrics(health, metrics, now)
         return ok
 
     return archive_write
+
+
+def _schedule_market_warm(
+    settings: Settings,
+    db_manager: DatabaseManager,
+    observation: TradeObservation,
+    market_warm: MarketWarmCoordinator | None,
+) -> None:
+    """Enqueue markets/knowability warm without awaiting (FR-002)."""
+    from polymarket_insider_tracker.ingestor.archive.workers import schedule_market_warm
+
+    schedule_market_warm(
+        asyncio.get_running_loop(),
+        db_manager,
+        condition_id=observation.event.market_id,
+        archive=settings.archive,
+        coordinator=market_warm,
+    )
 
 
 async def persist_archive_observation(

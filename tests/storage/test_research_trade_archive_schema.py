@@ -1,4 +1,4 @@
-"""Schema tests for Phase A0 research trade archive tables."""
+"""Schema tests for research trade archive tables."""
 
 from __future__ import annotations
 

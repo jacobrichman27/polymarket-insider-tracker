@@ -14,6 +14,8 @@ FORBIDDEN_TOKENS = (
     "CANCEL_ORDER",
     "PRIVATE_KEY",
     "WALLET_MNEMONIC",
+    "PLACE_BET",
+    "SUBMIT_ORDER",
 )
 
 

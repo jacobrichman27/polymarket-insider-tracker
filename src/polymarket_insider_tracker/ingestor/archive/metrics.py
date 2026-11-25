@@ -1,4 +1,4 @@
-"""Prometheus metrics for the research trade archive (Phase A0)."""
+"""Prometheus metrics for the research trade archive."""
 
 from __future__ import annotations
 

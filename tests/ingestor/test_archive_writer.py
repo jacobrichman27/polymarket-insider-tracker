@@ -1,4 +1,4 @@
-"""Archive writer behavioral contracts beyond storage (Phase A0)."""
+"""Archive writer behavioral contracts beyond storage."""
 
 from __future__ import annotations
 

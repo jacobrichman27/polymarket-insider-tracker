@@ -1,4 +1,4 @@
-"""Durable ingest-loss / write-failure ledger (Phase A0)."""
+"""Durable ingest-loss / write-failure ledger."""
 
 from __future__ import annotations
 

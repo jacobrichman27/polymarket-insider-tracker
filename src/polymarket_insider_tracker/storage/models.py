@@ -222,7 +222,7 @@ class PipelineTerminalErrorModel(Base):
 
 
 class TradeModel(Base):
-    """Partitioned research trades-tape row (Phase A0)."""
+    """Partitioned research trades-tape row."""
 
     __tablename__ = "trades"
     __table_args__ = (
@@ -260,7 +260,7 @@ class TradeModel(Base):
 
 
 class IngestGapEventModel(Base):
-    """Durable ingest-loss and archive write-failure ledger (Phase A0)."""
+    """Durable ingest-loss and archive write-failure ledger."""
 
     __tablename__ = "ingest_gap_events"
     __table_args__ = (
@@ -286,11 +286,85 @@ class IngestGapEventModel(Base):
 
 
 class ArchiveCollectorStateModel(Base):
-    """Set-once continuous-archive start state per source (Phase A0)."""
+    """Set-once continuous-archive start state per source."""
 
     __tablename__ = "archive_collector_state"
 
     source_id: Mapped[str] = mapped_column(Text, primary_key=True)
     archive_start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     raw_retention: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    repair_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MarketVersionModel(Base):
+    """Append-on-change versioned market metadata."""
+
+    __tablename__ = "markets"
+    __table_args__ = (PrimaryKeyConstraint("condition_id", "known_at"),)
+
+    condition_id: Mapped[str] = mapped_column(Text, nullable=False)
+    known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    token_outcomes: Mapped[object] = mapped_column(JSON, nullable=False)
+    question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    series_slug: Mapped[str | None] = mapped_column(Text, nullable=True)
+    info_knowability_regime: Mapped[str | None] = mapped_column(Text, nullable=True)
+    knowable_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    knowability_label_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    knowability_policy_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_market_json: Mapped[object | None] = mapped_column(JSON, nullable=True)
+
+
+class KnowabilitySeriesCacheModel(Base):
+    """Versioned series-slug knowability cache."""
+
+    __tablename__ = "knowability_series_cache"
+    __table_args__ = (
+        PrimaryKeyConstraint("series_slug", "policy_version", "known_at"),
+        Index("idx_knowability_series_slug", "series_slug"),
+    )
+
+    series_slug: Mapped[str] = mapped_column(Text, nullable=False)
+    policy_version: Mapped[str] = mapped_column(Text, nullable=False)
+    known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    regime: Mapped[str] = mapped_column(Text, nullable=False)
+    knowable_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    label_source: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class KnowabilityTemplateCacheModel(Base):
+    """Versioned allowlisted-template knowability cache."""
+
+    __tablename__ = "knowability_template_cache"
+    __table_args__ = (
+        PrimaryKeyConstraint("template_id", "allowlist_version", "known_at"),
+        Index("idx_knowability_template_id", "template_id"),
+    )
+
+    template_id: Mapped[str] = mapped_column(Text, nullable=False)
+    allowlist_version: Mapped[str] = mapped_column(Text, nullable=False)
+    known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    regime: Mapped[str] = mapped_column(Text, nullable=False)
+    knowable_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    label_source: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class KnowabilityOverrideModel(Base):
+    """Append-on-change human knowability overrides."""
+
+    __tablename__ = "knowability_overrides"
+    __table_args__ = (
+        PrimaryKeyConstraint("key_type", "key_id", "known_at"),
+        Index("idx_knowability_override_key", "key_type", "key_id"),
+    )
+
+    key_type: Mapped[str] = mapped_column(Text, nullable=False)
+    key_id: Mapped[str] = mapped_column(Text, nullable=False)
+    known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    regime: Mapped[str] = mapped_column(Text, nullable=False)
+    knowable_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    policy_version: Mapped[str] = mapped_column(Text, nullable=False)

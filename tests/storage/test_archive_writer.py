@@ -1,4 +1,4 @@
-"""Idempotent archive writer persistence tests (Phase A0)."""
+"""Idempotent archive writer persistence tests."""
 
 from __future__ import annotations
 

@@ -2,7 +2,7 @@
 
 **Input**: Design documents from `specs/005-research-trade-archive/`
 **Prerequisites**: `spec.md` (clarified), `plan.md`, `research.md`, `data-model.md`, `contracts/*.md`, `quickstart.md`, amended 001 observation-boundary / 003 health contracts, reviewer-owned `checklists/archive.md` (markers owned by the repository owner; agents leave unchecked).
-**Gaps**: G-035–G-043 remain Open until implement evidence; update dispositions through converge.
+**Gaps**: G-035–G-043 **Closed 2026-11-25** (implement + [`evidence/capacity-burn-in.md`](evidence/capacity-burn-in.md)); prior Open wording retained in historical receipts.
 
 **Tests**: Every behavior change begins with a failing test where practical. `unittest.mock` is prohibited; use working fakes, `fakeredis`, disposable Postgres/SQLite engines, and real value objects per `specs/002-reproducible-runtime/contracts/test-quality.md`. Spec SC-006 and constitution III require automated fan-out / recovery coverage.
 
@@ -182,6 +182,7 @@
   - Evidence (2026-11-21): exit 0 (coverage 100% on enrolled include; security/source-hash gates green after `pipeline.py` hash refresh).
 - [x] T042 `$speckit-converge` / evidence receipt that remaining unbuilt work is empty or explicitly deferred
   - Evidence (2026-11-21): converge assessment — A0 runtime/spec/plan tasks implemented; G-035–G-043 remain Open pending operator capacity provision / sustained verify on a clean committed tree; no new Convergence tasks appended.
+  - Evidence (2026-11-25): capacity burn-in receipt closed G-035–G-043 in gap-register (append-only); see `evidence/capacity-burn-in.md` and plan Measured revision.
 
 ---
 

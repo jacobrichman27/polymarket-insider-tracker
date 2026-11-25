@@ -1,4 +1,4 @@
-"""Trade-archive readiness signals (Phase A0)."""
+"""Trade-archive readiness signals."""
 
 from __future__ import annotations
 

@@ -11,7 +11,7 @@ Before every per-feature Spec Kit command, set the intended directory explicitly
 ```bash
 SPECIFY_FEATURE_DIRECTORY=specs/002-reproducible-runtime <speckit command>
 # After it exists:
-SPECIFY_FEATURE_DIRECTORY=specs/005-research-trade-archive <speckit command>
+SPECIFY_FEATURE_DIRECTORY=specs/006-versioned-markets-knowability <speckit command>
 ```
 
 Replace the value for the active slice. Never rely on the ignored pointer when reviewing or executing a
@@ -23,8 +23,8 @@ Proposed execution order:
 2. `001-supported-trade-ingestion`
 3. `003-safe-observable-operation`
 4. `004-truthful-detection-contract`
-5. `005-research-trade-archive` (Phase A0 tape — **specified**; activate this path on every Spec Kit command for the slice)
-6. `006-versioned-markets-knowability` (Phase A1 — proposed)
+5. `005-research-trade-archive` (Phase A0 tape — **implemented**; activate only for A0 follow-ups)
+6. `006-versioned-markets-knowability` (Phase A1 — **specified**; activate this path on every Spec Kit command for the slice)
 7. `007-featured-enrichment` (Phase B — proposed)
 8. `008-labels-resolutions` (Phase C — proposed)
 9. `009-archive-retention` (Phase D — proposed)

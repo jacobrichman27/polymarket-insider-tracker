@@ -17,6 +17,9 @@ from urllib.parse import urlsplit
 from pydantic import AfterValidator, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from polymarket_insider_tracker.archive_defaults import (
+    DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY,
+)
 from polymarket_insider_tracker.deprecated_api_key import DeprecatedApiKey
 from polymarket_insider_tracker.endpoints import OFFICIAL_V2_TRADES_URL, reject_v1_trades_url
 from polymarket_insider_tracker.redaction import is_scannable_url_text, redact_url
@@ -365,7 +368,7 @@ class DetectorSettings(BaseSettings):
 
 
 class ArchiveSettings(BaseSettings):
-    """Opt-in research trades-tape writing (Phase A0)."""
+    """Opt-in research trades-tape writing plus markets/knowability/repair flags."""
 
     model_config = SettingsConfigDict(
         env_prefix="ARCHIVE_",
@@ -385,6 +388,53 @@ class ArchiveSettings(BaseSettings):
         alias="ARCHIVE_RAW_RETENTION",
         description="Store Core hot raw_row_json when archive writing is enabled",
     )
+    outcome_repair_enabled: bool = Field(
+        default=False,
+        alias="ARCHIVE_OUTCOME_REPAIR_ENABLED",
+        description="Async forward-only outcome repair (requires ARCHIVE_ENABLED; default off)",
+    )
+    outcome_repair_lag_seconds: int = Field(
+        default=300,
+        alias="ARCHIVE_OUTCOME_REPAIR_LAG_SECONDS",
+        description="Post-cutover thin rows still not_attempted after this lag trip KPI",
+        ge=0,
+    )
+    outcome_repair_unrepaired_max_ratio: float = Field(
+        default=0.05,
+        alias="ARCHIVE_OUTCOME_REPAIR_UNREPAIRED_MAX_RATIO",
+        description="Ceiling unrepaired share among thin post-cutover rows (trailing day)",
+        ge=0.0,
+        le=1.0,
+    )
+    knowability_model_enabled: bool = Field(
+        default=True,
+        alias="ARCHIVE_KNOWABILITY_MODEL_ENABLED",
+        description="Model-on-miss intent; false forces off; effective on needs credentials",
+    )
+    knowability_model_max_calls_per_day: int = Field(
+        default=DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY,
+        alias="ARCHIVE_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY",
+        description="Hard UTC-day ceiling for Decisions API knowability calls",
+        ge=0,
+    )
+    knowability_model_api_key: SecretStr | None = Field(
+        default=None,
+        alias="ARCHIVE_KNOWABILITY_MODEL_API_KEY",
+        description="OpenAI Decisions API key (secret); absent → model effectively off",
+    )
+
+    @property
+    def knowability_model_credentials_present(self) -> bool:
+        key = self.knowability_model_api_key
+        return key is not None and bool(key.get_secret_value().strip())
+
+    @property
+    def knowability_model_effectively_enabled(self) -> bool:
+        return self.knowability_model_enabled and self.knowability_model_credentials_present
+
+    @property
+    def outcome_repair_effectively_enabled(self) -> bool:
+        return self.enabled and self.outcome_repair_enabled
 
 
 class Settings(BaseSettings):
@@ -476,6 +526,18 @@ class Settings(BaseSettings):
             "archive": {
                 "enabled": str(self.archive.enabled),
                 "raw_retention": str(self.archive.raw_retention),
+                "outcome_repair_enabled": str(self.archive.outcome_repair_enabled),
+                "outcome_repair_lag_seconds": str(self.archive.outcome_repair_lag_seconds),
+                "outcome_repair_unrepaired_max_ratio": str(
+                    self.archive.outcome_repair_unrepaired_max_ratio
+                ),
+                "knowability_model_enabled": str(self.archive.knowability_model_enabled),
+                "knowability_model_max_calls_per_day": str(
+                    self.archive.knowability_model_max_calls_per_day
+                ),
+                "knowability_model_api_key": (
+                    "(set)" if self.archive.knowability_model_credentials_present else "(not set)"
+                ),
             },
         }
 

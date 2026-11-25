@@ -17,7 +17,7 @@ MAX_BACKOFF_SECONDS = 5.0
 
 
 class FutureConsumer(Protocol):
-    """Reserved decision/execution bus slot; A0 ships a no-op only."""
+    """Reserved decision/execution bus slot; ships a no-op only."""
 
     async def consume(self, observation: TradeObservation) -> None: ...
 

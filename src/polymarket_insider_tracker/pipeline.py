@@ -39,7 +39,15 @@ from polymarket_insider_tracker.detector.models import RiskAssessment
 from polymarket_insider_tracker.detector.scorer import SignalBundle
 from polymarket_insider_tracker.ingestor.alert_path_health import AlertPathHealthMonitor
 from polymarket_insider_tracker.ingestor.archive.health import ArchiveHealthSignals
+from polymarket_insider_tracker.ingestor.archive.repair_kpi import OutcomeRepairHealthSignals
+from polymarket_insider_tracker.ingestor.archive.workers import (
+    ArchiveWorkerHandles,
+    build_warm_coordinator,
+    start_archive_workers,
+    stop_archive_workers,
+)
 from polymarket_insider_tracker.ingestor.health import ComponentStatus, HealthMonitor
+from polymarket_insider_tracker.ingestor.observation_boundary import source_id as boundary_source_id
 from polymarket_insider_tracker.ingestor.readiness import running_ingestion_status
 from polymarket_insider_tracker.ingestor.trade_poller import IngestionState, TradePoller
 from polymarket_insider_tracker.pipeline_components import (
@@ -187,6 +195,10 @@ class Pipeline:
         self._funding_tracer: FundingTracer | None = None
         self._health_monitor = AlertPathHealthMonitor(self._settings.detector.alert_threshold)
         self._archive_health = ArchiveHealthSignals()
+        self._outcome_repair_health = OutcomeRepairHealthSignals()
+        self._archive_workers = ArchiveWorkerHandles(
+            warm=build_warm_coordinator(self._settings.archive)
+        )
         self._wire_health_monitor()
 
         # Synchronization
@@ -250,10 +262,15 @@ class Pipeline:
         self._health_monitor.set_component_checker("ingestion", self._check_ingestion)
         if self._settings.archive.enabled:
             self._health_monitor.set_component_checker("trade_archive", self._check_trade_archive)
+        if self._settings.archive.outcome_repair_effectively_enabled:
+            self._health_monitor.set_component_checker("outcome_repair", self._check_outcome_repair)
         self._health_monitor.set_last_error_provider(lambda: self._stats.last_error)
 
     async def _check_trade_archive(self) -> ComponentStatus:
         return self._archive_health.evaluate(time.time())
+
+    async def _check_outcome_repair(self) -> ComponentStatus:
+        return self._outcome_repair_health.evaluate()
 
     async def _check_database(self) -> ComponentStatus:
         if not self._db_manager:
@@ -385,6 +402,7 @@ class Pipeline:
             on_trade=self.process_trade,
             on_ingestion_state=self.on_ingestion_state,
             archive_health=self._archive_health,
+            market_warm=self._archive_workers.warm,
         )
         installed = self._install(components)
         logger.info("All components initialized")
@@ -437,6 +455,22 @@ class Pipeline:
 
         logger.debug("Starting metadata sync service in the background...")
         self._metadata_task = asyncio.create_task(self._run_metadata_sync(installed))
+        self._start_archive_workers()
+
+    def _start_archive_workers(self) -> None:
+        if self._db_manager is None:
+            return
+        source = boundary_source_id(
+            self._settings.polymarket.trades_url,
+            self._settings.polymarket.trades_coverage.value,
+        )
+        self._archive_workers = start_archive_workers(
+            self._db_manager,
+            source_id=source,
+            archive=self._settings.archive,
+            warm=self._archive_workers.warm,
+            repair_health=self._outcome_repair_health,
+        )
 
     def _record_processing_error(self, message: str) -> None:
         """Count a recoverable per-trade failure and surface it at /health (lifecycle §5)."""
@@ -497,6 +531,10 @@ class Pipeline:
         await terminal.cancel_task(self._metadata_task)
         self._poller_task = None
         self._metadata_task = None
+        await stop_archive_workers(self._archive_workers)
+        self._archive_workers = ArchiveWorkerHandles(
+            warm=build_warm_coordinator(self._settings.archive)
+        )
         await self._drain_terminal_writes()
         if self._installed is not None:
             logger.debug("Stopping metadata sync...")

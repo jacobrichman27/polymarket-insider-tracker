@@ -1,4 +1,4 @@
-"""Research trade archive (Phase A0): writer, gap ledger, collector state."""
+"""Research trade archive: writer, gap ledger, markets, repair, knowability."""
 
 from __future__ import annotations
 

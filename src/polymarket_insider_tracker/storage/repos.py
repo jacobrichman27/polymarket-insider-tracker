@@ -9,11 +9,11 @@ from __future__ import annotations
 import logging
 import sqlite3
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -24,6 +24,10 @@ from polymarket_insider_tracker.storage.models import (
     ArchiveCollectorStateModel,
     FundingTransferModel,
     IngestGapEventModel,
+    KnowabilityOverrideModel,
+    KnowabilitySeriesCacheModel,
+    KnowabilityTemplateCacheModel,
+    MarketVersionModel,
     RiskAssessmentModel,
     TradeModel,
     WalletProfileModel,
@@ -705,8 +709,17 @@ class IngestGapEventDTO:
     detail: object | None = None
 
 
+@dataclass(frozen=True)
+class OutcomeRepairKpiCounts:
+    """Post-cutover thin-row counts for repair lag / unrepaired KPIs."""
+
+    thin_post_cutover: int
+    not_attempted_past_lag: int
+    unrepaired: int
+
+
 class TradeArchiveRepository:
-    """Idempotent trades-tape and gap-ledger persistence (Phase A0)."""
+    """Idempotent trades-tape and gap-ledger persistence."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -825,11 +838,85 @@ class TradeArchiveRepository:
             source_id=source_id,
             archive_start_at=archive_start_at,
             raw_retention=raw_retention,
+            repair_enabled_at=None,
             updated_at=datetime.now(UTC),
         )
         self.session.add(model)
         await self.session.flush()
         return model
+
+    async def set_repair_enabled_at_once(
+        self, *, source_id: str, repair_enabled_at: datetime
+    ) -> ArchiveCollectorStateModel:
+        """Set repair cutover once; no-op overwrite when already set."""
+        existing = await self.get_collector_state(source_id)
+        if existing is None:
+            raise ValueError(f"no collector state for {source_id}")
+        if existing.repair_enabled_at is not None:
+            return existing
+        existing.repair_enabled_at = repair_enabled_at
+        existing.updated_at = datetime.now(UTC)
+        await self.session.flush()
+        return existing
+
+    async def update_outcome_repair(
+        self,
+        *,
+        trade_ts: datetime,
+        observation_id: str,
+        status: str,
+        outcome_repaired: str | None,
+        outcome_index_repaired: int | None,
+    ) -> bool:
+        result = await self.session.execute(
+            update(TradeModel)
+            .where(TradeModel.trade_ts == trade_ts)
+            .where(TradeModel.observation_id == observation_id)
+            .values(
+                outcome_repair_status=status,
+                outcome_repaired=outcome_repaired,
+                outcome_index_repaired=outcome_index_repaired,
+            )
+        )
+        return rows_affected(result)
+
+    async def count_outcome_repair_kpi(
+        self,
+        *,
+        cutover: datetime,
+        now: datetime,
+        lag_seconds: int,
+        trailing_hours: int = 24,
+    ) -> OutcomeRepairKpiCounts:
+        """Count thin post-cutover rows for lag / unrepaired KPI (trailing window)."""
+        cutover_utc = _as_utc(cutover)
+        now_utc = _as_utc(now)
+        window_start = max(cutover_utc, now_utc - timedelta(hours=trailing_hours))
+        lag_deadline = now_utc - timedelta(seconds=lag_seconds)
+        thin = _thin_api_outcome_clause()
+        base = and_(TradeModel.observed_at >= window_start, thin)
+        thin_total = await self._count_trades(base)
+        past_lag = await self._count_trades(
+            and_(
+                base,
+                TradeModel.outcome_repair_status == "not_attempted",
+                TradeModel.observed_at <= lag_deadline,
+            )
+        )
+        unrepaired = await self._count_trades(
+            and_(base, TradeModel.outcome_repair_status == "unrepaired")
+        )
+        return OutcomeRepairKpiCounts(
+            thin_post_cutover=thin_total,
+            not_attempted_past_lag=past_lag,
+            unrepaired=unrepaired,
+        )
+
+    async def _count_trades(self, *clauses: Any) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(TradeModel).where(*clauses)
+        )
+        return int(result.scalar_one())
 
     async def _open_write_failure_row(
         self, source_id: str, observation_id: str
@@ -861,3 +948,188 @@ class TradeArchiveRepository:
             redis_payload=dto.redis_payload,
             detail=dto.detail,
         )
+
+
+def _thin_api_outcome_clause() -> Any:
+    return or_(
+        TradeModel.outcome_index == 999,
+        TradeModel.outcome.is_(None),
+        TradeModel.outcome == "",
+    )
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+class MarketsRepository:
+    """Append-on-change markets versions and snapshot reads."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def latest(self, condition_id: str) -> MarketVersionModel | None:
+        result = await self.session.execute(
+            select(MarketVersionModel)
+            .where(MarketVersionModel.condition_id == condition_id)
+            .order_by(MarketVersionModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def latest_at_or_before(
+        self, condition_id: str, at: datetime
+    ) -> MarketVersionModel | None:
+        result = await self.session.execute(
+            select(MarketVersionModel)
+            .where(MarketVersionModel.condition_id == condition_id)
+            .where(MarketVersionModel.known_at <= at)
+            .order_by(MarketVersionModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def append_version(
+        self,
+        *,
+        condition_id: str,
+        known_at: datetime,
+        token_outcomes: object,
+        question: str | None = None,
+        series_slug: str | None = None,
+        info_knowability_regime: str | None = None,
+        knowable_from: datetime | None = None,
+        knowability_label_source: str | None = None,
+        knowability_policy_version: str | None = None,
+        source_version: str | None = None,
+        raw_market_json: object | None = None,
+    ) -> MarketVersionModel:
+        model = MarketVersionModel(
+            condition_id=condition_id,
+            known_at=known_at,
+            token_outcomes=token_outcomes,
+            question=question,
+            series_slug=series_slug,
+            info_knowability_regime=info_knowability_regime,
+            knowable_from=knowable_from,
+            knowability_label_source=knowability_label_source,
+            knowability_policy_version=knowability_policy_version,
+            source_version=source_version,
+            raw_market_json=raw_market_json,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
+
+
+class KnowabilityRepository:
+    """Knowability overrides and series/template caches."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def latest_override(
+        self, *, key_type: str, key_id: str
+    ) -> KnowabilityOverrideModel | None:
+        result = await self.session.execute(
+            select(KnowabilityOverrideModel)
+            .where(KnowabilityOverrideModel.key_type == key_type)
+            .where(KnowabilityOverrideModel.key_id == key_id)
+            .order_by(KnowabilityOverrideModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def append_override(
+        self,
+        *,
+        key_type: str,
+        key_id: str,
+        known_at: datetime,
+        regime: str,
+        policy_version: str,
+        knowable_from: datetime | None = None,
+        notes: str | None = None,
+    ) -> KnowabilityOverrideModel:
+        model = KnowabilityOverrideModel(
+            key_type=key_type,
+            key_id=key_id,
+            known_at=known_at,
+            regime=regime,
+            knowable_from=knowable_from,
+            notes=notes,
+            policy_version=policy_version,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
+
+    async def latest_series_cache(
+        self, series_slug: str, policy_version: str
+    ) -> KnowabilitySeriesCacheModel | None:
+        result = await self.session.execute(
+            select(KnowabilitySeriesCacheModel)
+            .where(KnowabilitySeriesCacheModel.series_slug == series_slug)
+            .where(KnowabilitySeriesCacheModel.policy_version == policy_version)
+            .order_by(KnowabilitySeriesCacheModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def append_series_cache(
+        self,
+        *,
+        series_slug: str,
+        policy_version: str,
+        regime: str,
+        known_at: datetime,
+        label_source: str,
+        knowable_from: datetime | None = None,
+    ) -> KnowabilitySeriesCacheModel:
+        model = KnowabilitySeriesCacheModel(
+            series_slug=series_slug,
+            policy_version=policy_version,
+            known_at=known_at,
+            regime=regime,
+            knowable_from=knowable_from,
+            label_source=label_source,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
+
+    async def latest_template_cache(
+        self, template_id: str, allowlist_version: str
+    ) -> KnowabilityTemplateCacheModel | None:
+        result = await self.session.execute(
+            select(KnowabilityTemplateCacheModel)
+            .where(KnowabilityTemplateCacheModel.template_id == template_id)
+            .where(KnowabilityTemplateCacheModel.allowlist_version == allowlist_version)
+            .order_by(KnowabilityTemplateCacheModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def append_template_cache(
+        self,
+        *,
+        template_id: str,
+        allowlist_version: str,
+        regime: str,
+        known_at: datetime,
+        label_source: str,
+        knowable_from: datetime | None = None,
+    ) -> KnowabilityTemplateCacheModel:
+        model = KnowabilityTemplateCacheModel(
+            template_id=template_id,
+            allowlist_version=allowlist_version,
+            known_at=known_at,
+            regime=regime,
+            knowable_from=knowable_from,
+            label_source=label_source,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
