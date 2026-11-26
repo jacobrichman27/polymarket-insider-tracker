@@ -18,33 +18,23 @@ from polymarket_insider_tracker.archive_defaults import (
 
 DECISIONS_URL = "https://api.openai.com/v1/decisions"
 DECISIONS_MODEL = "gpt-6-luna"
-REGIME_CHOICES = ("never_early", "always_latent", "windowed", "unknown")
+REGIME_CHOICES = ("no_private_edge", "private_edge_possible", "unknown")
 REGIME_QUESTION_NAME = "knowability_regime"
 
 _REGIME_CHOICE_OPTIONS: tuple[dict[str, str], ...] = (
     {
-        "value": "never_early",
+        "value": "no_private_edge",
         "description": (
             "No meaningful non-public informational edge exists: anyone who "
             "could know the settlement fact early has only the same public "
-            "signals as everyone else (no privileged knowledge)."
+            "signals as everyone else (no privileged channel)."
         ),
     },
     {
-        "value": "always_latent",
+        "value": "private_edge_possible",
         "description": (
             "Some party can hold privileged, non-public knowledge of the "
-            "eventual settlement fact at any time before it is public, with "
-            "no hard onset that first creates that possibility."
-        ),
-    },
-    {
-        "value": "windowed",
-        "description": (
-            "Privileged knowledge of the settlement fact becomes possible "
-            "only after a definite onset event; before that onset, no such "
-            "edge exists. Prefer always_latent when the onset is soft or "
-            "insiders may already know."
+            "eventual settlement fact before that fact is public."
         ),
     },
     {
@@ -59,17 +49,18 @@ _REGIME_CHOICE_OPTIONS: tuple[dict[str, str], ...] = (
 _REGIME_INSTRUCTIONS = (
     "Classify information-knowability for this prediction-market listing: "
     "could someone with a privileged, non-public channel know the eventual "
-    "settlement fact before that fact is public? Judge the structure of the "
-    "question, not resemblance to familiar categories. Ignore ordinary "
+    "settlement fact before that fact is public? Answer yes "
+    "(private_edge_possible) or no (no_private_edge). Judge the structure of "
+    "the question, not resemblance to familiar categories. Ignore ordinary "
     "forecast skill, public data, or widely available models—those are not "
-    "insider edges. Pick exactly one regime from the supplied choices."
+    "insider edges. Timing of when privileged knowledge might appear does not "
+    "create a third category. Pick exactly one regime from the supplied choices."
 )
 
 
 @dataclass(frozen=True)
 class DecisionsRegimeResult:
     regime: str
-    knowable_from_iso: str | None = None
     raw: object | None = None
 
 
@@ -129,10 +120,8 @@ class HttpxDecisionsClient:
         self._api_key = api_key
         self._transport = transport
         self._timeout = timeout
-        self.budget = (
-            budget
-            if budget is not None
-            else BudgetGate(max_calls_per_day=DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY)
+        self.budget = budget or BudgetGate(
+            max_calls_per_day=DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY
         )
 
     async def classify_regime(

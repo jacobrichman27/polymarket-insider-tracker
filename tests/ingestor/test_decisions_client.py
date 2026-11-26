@@ -31,9 +31,11 @@ def test_choice_payload_matches_decisions_create_contract() -> None:
     instructions = q0["instructions"].lower()
     assert "privileged" in instructions
     assert "public" in instructions
-    never_early = next(c for c in q0["choices"] if c["value"] == "never_early")
-    assert "e.g." not in never_early["description"].lower()
-    assert "crypto" not in never_early["description"].lower()
+    assert set(REGIME_CHOICES) == {"no_private_edge", "private_edge_possible", "unknown"}
+    no_edge = next(c for c in q0["choices"] if c["value"] == "no_private_edge")
+    assert "windowed" not in q0["instructions"].lower()
+    assert "e.g." not in no_edge["description"].lower()
+    assert "crypto" not in no_edge["description"].lower()
 
 
 def test_extract_regime_from_documented_choice_answer() -> None:
@@ -43,13 +45,13 @@ def test_extract_regime_from_documented_choice_answer() -> None:
             {
                 "type": "choice",
                 "name": REGIME_QUESTION_NAME,
-                "choice": "never_early",
+                "choice": "no_private_edge",
                 "confidence": 0.9,
             }
         ],
         "usage": {"input_tokens": 10, "output_tokens": 0, "total_tokens": 10},
     }
-    assert extract_regime(body) == "never_early"
+    assert extract_regime(body) == "no_private_edge"
 
 
 def test_extract_regime_refusal_is_unknown() -> None:
@@ -74,7 +76,7 @@ async def test_client_posts_and_parses_choice_answer() -> None:
                     {
                         "type": "choice",
                         "name": REGIME_QUESTION_NAME,
-                        "choice": "always_latent",
+                        "choice": "private_edge_possible",
                     }
                 ],
             },
@@ -89,7 +91,7 @@ async def test_client_posts_and_parses_choice_answer() -> None:
         series_slug="nba",
         market_json=None,
     )
-    assert result.regime == "always_latent"
+    assert result.regime == "private_edge_possible"
     assert seen["path"] == "/v1/decisions"
     body = seen["body"]
     assert isinstance(body, dict)

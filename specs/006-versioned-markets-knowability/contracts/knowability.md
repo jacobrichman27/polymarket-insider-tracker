@@ -1,7 +1,7 @@
 # Contract: Knowability Classification
 
 **Feature**: `specs/006-versioned-markets-knowability`  
-**Date**: 2026-11-23 (amended 2026-11-24 — model default / budget; 2026-11-25 — version stamps / provisional windowed / template short-circuit)  
+**Date**: 2026-11-23 (amended 2026-11-24 — model default / budget; 2026-11-25 — version stamps / template short-circuit / binary regimes v3)  
 **Normative regimes / lookup**: [`Data.md`](../../../Data.md) Knowability
 
 ## Lookup order (first hit wins)
@@ -18,9 +18,9 @@
 
 Record `knowability_label_source` on the markets version (and optional stamp on new trades inserts). Successful non-`unknown` model classifications MUST write through to the **series** cache when a series id is present **and** to the **question** cache when the question normalizes non-empty (not into free-form templates).
 
-**Default model adapter:** OpenAI Decisions API (`POST /v1/decisions`, `gpt-6-luna`) with bounded `choice` (and related) questions for regime classification. Version the adapter; credentials via existing secret-safe config patterns.
+**Default model adapter:** OpenAI Decisions API (`POST /v1/decisions`, `gpt-6-luna`) with a single bounded `choice` question for regime classification. Version the adapter; credentials via existing secret-safe config patterns. No onset / `knowable_from` question under `knowability.v3`.
 
-**Policy stamp:** `knowability.v2` (series/override policy version in product code; `v1` = initial Decisions copy; `v2` = principle-based privileged-edge definitions without category examples).
+**Policy stamp:** `knowability.v3` (product code; `v1` = initial Decisions copy; `v2` = principle-based privileged-edge definitions; `v3` = binary regimes `no_private_edge` / `private_edge_possible` / `unknown`, no live onset).
 
 ## Model-on-miss enablement & spend guardrails
 
@@ -37,10 +37,12 @@ Record `knowability_label_source` on the markets version (and optional stamp on 
 
 ## Regimes
 
-`never_early` | `always_latent` | `windowed` | `unknown`
+`no_private_edge` | `private_edge_possible` | `unknown`
 
-- `windowed` **with** onset / `knowable_from` is complete per Data.md. `windowed` **without** onset is allowed as **provisional** (distinct from `unknown`) until onset enrichment; do not collapse it into `unknown`. Do not force earnings-style calendars into `windowed`.
-- All regimes remain admitted on the trades tape; never drop `never_early` or `unknown`.
+- Binary lock: timing of when privileged knowledge might appear does **not** create a third class. If a privileged channel can exist before public resolution → `private_edge_possible`; otherwise → `no_private_edge`.
+- `markets.knowable_from` remains nullable for legacy rows and is unused under `v3` (classifications write `NULL`).
+- All regimes remain admitted on the trades tape; never drop `no_private_edge` or `unknown`.
+- Featuring (Phase B) gates on `private_edge_possible` only (plus notional cutoff).
 
 ## Upgrade semantics
 
@@ -48,4 +50,4 @@ New markets version on classification/upgrade. **Do not** rewrite historical tra
 
 ## Policy versioning
 
-`knowability_policy` version stamps (`knowability.v2` current) apply forward. Do not mix versions silently in one analysis slice.
+`knowability_policy` version stamps (`knowability.v3` current) apply forward. Do not mix versions silently in one analysis slice. Historical `v1`/`v2` rows with legacy regime names remain as stored history.

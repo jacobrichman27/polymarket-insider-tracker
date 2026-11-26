@@ -157,7 +157,7 @@ async def test_shared_coordinator_budget_blocks_second_model_call(
                     {
                         "type": "choice",
                         "name": "knowability_regime",
-                        "choice": "always_latent",
+                        "choice": "private_edge_possible",
                     }
                 ],
             },

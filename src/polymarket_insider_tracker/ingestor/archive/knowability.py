@@ -22,8 +22,8 @@ from polymarket_insider_tracker.ingestor.archive.knowability_templates import (
 )
 from polymarket_insider_tracker.storage.repos import KnowabilityRepository
 
-KNOWABILITY_POLICY_VERSION = "knowability.v2"
-VALID_REGIMES = frozenset({"never_early", "always_latent", "windowed", "unknown"})
+KNOWABILITY_POLICY_VERSION = "knowability.v3"
+VALID_REGIMES = frozenset({"no_private_edge", "private_edge_possible", "unknown"})
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -31,7 +31,6 @@ _WHITESPACE = re.compile(r"\s+")
 class KnowabilityClassification:
     regime: str
     label_source: str
-    knowable_from: datetime | None = None
     template_id: str | None = None
     series_slug: str | None = None
     policy_version: str = KNOWABILITY_POLICY_VERSION
@@ -49,13 +48,6 @@ class ModelBudget(Protocol):
     def record_success(self) -> None: ...
 
     def record_error(self) -> None: ...
-
-
-def onset_for(regime: str, knowable_from: datetime | None) -> datetime | None:
-    """Keep onset only for ``windowed`` (null onset = provisional windowed)."""
-    if regime != "windowed":
-        return None
-    return knowable_from
 
 
 def normalize_question_text(question: str | None) -> NormalizedQuestion | None:
@@ -129,14 +121,12 @@ async def classify_market(
 def _override_result(
     *,
     regime: str,
-    knowable_from: datetime | None,
     series_slug: str | None = None,
     template_id: str | None = None,
 ) -> KnowabilityClassification:
     return KnowabilityClassification(
         regime=regime,
         label_source="override",
-        knowable_from=onset_for(regime, knowable_from),
         series_slug=series_slug,
         template_id=template_id,
     )
@@ -150,9 +140,7 @@ async def _series_override(
     row = await repo.latest_override(key_type="series", key_id=series_slug)
     if row is None:
         return None
-    return _override_result(
-        regime=row.regime, knowable_from=row.knowable_from, series_slug=series_slug
-    )
+    return _override_result(regime=row.regime, series_slug=series_slug)
 
 
 async def _template_override(
@@ -172,7 +160,6 @@ async def _template_override(
         return None
     return _override_result(
         regime=row.regime,
-        knowable_from=row.knowable_from,
         series_slug=series_slug,
         template_id=match.template_id,
     )
@@ -206,7 +193,6 @@ async def _try_series(
     return KnowabilityClassification(
         regime=row.regime,
         label_source="series",
-        knowable_from=onset_for(row.regime, row.knowable_from),
         series_slug=series_slug,
     )
 
@@ -220,11 +206,7 @@ async def _try_question(
     row = await repo.latest_question_cache(normalized.key, KNOWABILITY_POLICY_VERSION)
     if row is None:
         return None
-    return KnowabilityClassification(
-        regime=row.regime,
-        label_source="question",
-        knowable_from=onset_for(row.regime, row.knowable_from),
-    )
+    return KnowabilityClassification(regime=row.regime, label_source="question")
 
 
 async def _try_template(
@@ -254,7 +236,6 @@ async def _try_template(
     return KnowabilityClassification(
         regime=regime,
         label_source="template",
-        knowable_from=None,
         template_id=match.template_id,
     )
 
@@ -265,7 +246,6 @@ async def _write_model_caches(
     question: str,
     series_slug: str | None,
     regime: str,
-    knowable_from: datetime | None,
     stamp: datetime,
 ) -> None:
     if regime == "unknown":
@@ -276,7 +256,6 @@ async def _write_model_caches(
             policy_version=KNOWABILITY_POLICY_VERSION,
             regime=regime,
             known_at=stamp,
-            knowable_from=knowable_from,
             label_source="model",
         )
     normalized = normalize_question_text(question)
@@ -288,7 +267,6 @@ async def _write_model_caches(
         policy_version=KNOWABILITY_POLICY_VERSION,
         regime=regime,
         known_at=stamp,
-        knowable_from=knowable_from,
         label_source="model",
     )
 
@@ -309,35 +287,16 @@ async def _try_model(
         question=question, series_slug=series_slug, market_json=market_json
     )
     regime = result.regime if result.regime in VALID_REGIMES else "unknown"
-    knowable_from = onset_for(regime, _parse_onset(result.knowable_from_iso))
     await _write_model_caches(
-        repo,
-        question=question,
-        series_slug=series_slug,
-        regime=regime,
-        knowable_from=knowable_from,
-        stamp=stamp,
+        repo, question=question, series_slug=series_slug, regime=regime, stamp=stamp
     )
     source = "model" if regime != "unknown" else "unknown"
     return KnowabilityClassification(
         regime=regime,
         label_source=source,
-        knowable_from=knowable_from,
         series_slug=series_slug,
     )
 
 
 def date_key(stamp: datetime) -> str:
     return stamp.astimezone(UTC).date().isoformat()
-
-
-def _parse_onset(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)

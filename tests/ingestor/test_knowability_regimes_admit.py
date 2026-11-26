@@ -1,26 +1,17 @@
-"""windowed may lack onset (provisional); never_early/unknown remain admitted."""
+"""Binary regimes remain admitted; windowed/onset removed under knowability.v3."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
-from polymarket_insider_tracker.ingestor.archive.knowability import VALID_REGIMES, onset_for
+from polymarket_insider_tracker.ingestor.archive.knowability import VALID_REGIMES
 
 
-def test_windowed_keeps_null_onset() -> None:
-    assert onset_for("windowed", None) is None
+def test_admitted_regimes_are_binary_plus_unknown() -> None:
+    assert VALID_REGIMES == frozenset(
+        {"no_private_edge", "private_edge_possible", "unknown"}
+    )
 
 
-def test_windowed_keeps_onset() -> None:
-    onset = datetime(2026, 11, 24, tzinfo=UTC)
-    assert onset_for("windowed", onset) is onset
-
-
-def test_non_windowed_clears_onset() -> None:
-    onset = datetime(2026, 11, 24, tzinfo=UTC)
-    assert onset_for("never_early", onset) is None
-    assert onset_for("unknown", onset) is None
-
-
-def test_admitted_regimes_include_windowed_and_unknown() -> None:
-    assert {"never_early", "always_latent", "windowed", "unknown"} <= VALID_REGIMES
+def test_legacy_windowed_name_is_not_valid() -> None:
+    assert "windowed" not in VALID_REGIMES
+    assert "never_early" not in VALID_REGIMES
+    assert "always_latent" not in VALID_REGIMES

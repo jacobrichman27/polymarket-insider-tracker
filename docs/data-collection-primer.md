@@ -328,17 +328,15 @@ Dune’s curated Polymarket tables refresh on the order of **~1 hour**, and we *
 
 Not every market allows privileged private knowledge before the public finds out. The archive classifies each market’s **information structure** once (not once per trade). Authoritative rules live in [`Data.md`](../Data.md); summary:
 
-| Regime | Meaning | Concrete examples |
-| ------ | ------- | ----------------- |
-| **`never_early`** | No meaningful private lead on the settlement fact before it is public | Short-horizon spot crypto / price-at-time paths (“BTC up or down in 5 minutes?”, “Will BTC be above $X at 5pm?”) |
-| **`always_latent`** | Privileged knowledge can appear at **any** time; no hard onset after which knowledge begins | Sports matchups (injuries, lineups, fixes); earnings; strikes; surprise appointments; many geopolitics |
-| **`windowed`** | Insiders can know **only after** a definite onset | Awards after votes are locked; sealed/locked tallies before certification |
+| Regime | Meaning |
+| ------ | ------- |
+| **`no_private_edge`** | No meaningful non-public informational edge on the settlement fact before it is public |
+| **`private_edge_possible`** | Some party can hold privileged, non-public knowledge of the settlement fact before it is public |
+| **`unknown`** | Listing does not clearly establish whether a privileged non-public edge exists |
 
-**`always_latent` vs `windowed`:** in `always_latent`, knowledge can appear anytime; in `windowed`, only after `knowable_from`. Do **not** treat sports as `never_early`. Do **not** label earnings `windowed` just because a release is scheduled—management can know weeks earlier with no hard onset, so earnings are `always_latent`.
+Binary lock: timing of when privileged knowledge might appear does **not** create a third class. If a privileged channel can exist before public resolution → `private_edge_possible`. There is no live `knowable_from` onset under `knowability.v3`.
 
-For `windowed` markets, emit `knowable_from` (earliest time after which an insider can know). Public reveal is the market close / `end_date`—there is no separate `public_reveal_at` field. Before `knowable_from`, `could_outcome_be_knowable=false`; afterward (and before close) an insider may already know. Soft phases like `insider_knowledge_phase` (`remote` / `plausible` / `likely`) can still slice timing inside that window.
-
-**Do not ask an LLM for every sports game.** Recurring shapes reuse a cache: Gamma `seriesSlug` when present (`nba-2026`, `btc-up-or-down-5m`, …), else a normalized question template (`SPORTS_MATCHUP_WINNER`, `EARNINGS_BEAT_EPS`, …). Call a cheap decision model only on cache miss. See `Data.md` Knowability.
+**Do not ask an LLM for every sports game.** Recurring shapes reuse a cache: Gamma `seriesSlug` when present, else exact question-text cache, else (when enabled) a normalized question template. Call a cheap decision model only on cache miss. See `Data.md` Knowability.
 
 ---
 
@@ -384,6 +382,6 @@ You can run or extend the monitor without memorizing every crypto standard—but
 | **Wash-like** | Volume without real economic disagreement (needs counterparties / links) |
 | **Cluster** | Proxies linked by owner or uncommon funder |
 | **Burst** | Many wallets hitting the same outcome in a short window |
-| **Knowability regime** | Information structure: `never_early` / `always_latent` / `windowed` (sports and earnings → `always_latent`; `windowed` needs `knowable_from`) |
+| **Knowability regime** | Information structure: `no_private_edge` / `private_edge_possible` / `unknown` (featuring gate = `private_edge_possible`) |
 | **As-of feature** | Value knowable at trade time (fair for live scoring) |
 | **Later label** | Value known only after the trade (evaluation / next-trade features) |

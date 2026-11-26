@@ -139,7 +139,7 @@ owned paths above; do not point `SPECIFY_FEATURE_DIRECTORY` at `005-…` until t
 | Real Discord/Telegram smoke delivery | The constitution forbids it without explicit authorization. Deterministic fakes and dry-run evidence are sufficient for these slices. | Patrick; optional manual release check |
 | Indexer-backed wallet age | Wallet age is recoverable through an additional history/indexer provider, but that adds a new external contract, credential/rate-limit decisions, and failure modes. The core will label unknown age honestly first. | Patrick; separate approved specification after core convergence |
 | Python 3.14+ support | The currently declared open upper bound is unverified. Newer minors enter the supported matrix only after locked installation and required gates pass. | Patrick; revisit when the dependency matrix is green on the new minor |
-| Research archive Phase A1 (outcome repair, versioned markets, knowability) | Required for label-ready outcomes and regime featuring, but must not block A0 tape insert. Locked in `Data.md` Outcome-repair quality / Delivery phases. **Specify draft 2026-11-23** under `specs/006-versioned-markets-knowability/`. | Slice `006` plan/tasks/implement; gate Phase C on repair KPI |
+| Research archive Phase A1 (outcome repair, versioned markets, knowability) | Required for label-ready outcomes and regime featuring, but must not block A0 tape insert. Locked in `Data.md` Outcome-repair quality / Delivery phases. **Implemented + verified 2026-11-25** (`006`; G-044–G-046 Closed). | Phase C gates on repair KPI; featuring backfill → Phase B |
 | Research archive Phase B (featuring, enrichment, fingerprint, signed-flow, wallet-history dualism) | Cost/recall and analysis-honesty locks are in `Data.md`; not A0 schema blockers. | Slice `007` after A1 regime exists for the featuring gate |
 | Research archive Phase C (labels, schedule fidelity) | Win≠insider and label-schedule KPIs are Phase C acceptance; need A0 tape + A1 repair first. | Slice `008` |
 | Research archive Phase D (compaction/export) | Shrinks primary footprint; A0 must still ship provisional capacity (G-043). | Slice `009` |
@@ -260,3 +260,13 @@ plan “Measured revision” appended. **G-035–G-043 Closed** in the table
 above (append-only; earlier Open implement/Phase-8 wording left intact in
 prior receipts). Follow-on: gap-free always-on under full monitor path is
 ops/engineering, not a reopen of the G-043 disk-provision bar.
+
+### Slice 006 A1 verification receipt (2026-11-25)
+
+Disposable Postgres + static/services gates closed G-044–G-046 for the A1
+path (forward-only repair + KPI, versioned `markets`, knowability lookup /
+Decisions budget / no trades rewrite). Full command results:
+[`006/evidence/g044-g046-verification.md`](../006-versioned-markets-knowability/evidence/g044-g046-verification.md).
+**Non-claims retained:** live burn-in repair cutover; template matching
+(disabled); Phase B featuring backfill; Phase C labels. Roadmap status
+updated to A1 done; next owned Spec Kit work is Phase B specify (`007`).

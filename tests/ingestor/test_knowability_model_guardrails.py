@@ -28,7 +28,7 @@ class _CountingDecisions:
     ) -> DecisionsRegimeResult:
         del question, series_slug, market_json
         self.calls += 1
-        return DecisionsRegimeResult(regime="always_latent")
+        return DecisionsRegimeResult(regime="private_edge_possible")
 
 
 @pytest.mark.asyncio

@@ -62,7 +62,7 @@ async def test_markets_upgrade_leaves_trade_knowability_untouched() -> None:
             condition_id="c1",
             token_outcomes={"t": {"outcome": "Yes", "outcome_index": 0}},
             known_at=t0 + timedelta(hours=1),
-            info_knowability_regime="always_latent",
+            info_knowability_regime="private_edge_possible",
             knowability_label_source="model",
         )
         await session.commit()

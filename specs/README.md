@@ -24,7 +24,7 @@ Proposed execution order:
 3. `003-safe-observable-operation`
 4. `004-truthful-detection-contract`
 5. `005-research-trade-archive` (Phase A0 tape — **implemented**; activate only for A0 follow-ups)
-6. `006-versioned-markets-knowability` (Phase A1 — **specified**; activate this path on every Spec Kit command for the slice)
+6. `006-versioned-markets-knowability` (Phase A1 — **implemented/verified** 2026-11-25; G-044–G-046 Closed; activate this path only for A1 follow-ups)
 7. `007-featured-enrichment` (Phase B — proposed)
 8. `008-labels-resolutions` (Phase C — proposed)
 9. `009-archive-retention` (Phase D — proposed)

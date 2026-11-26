@@ -21,7 +21,7 @@ SessionFactory = async_sessionmaker[AsyncSession]
 
 
 class _CountingDecisions:
-    def __init__(self, regime: str = "never_early") -> None:
+    def __init__(self, regime: str = "no_private_edge") -> None:
         self.calls = 0
         self._regime = regime
 
@@ -64,7 +64,7 @@ def test_normalize_rejects_blank() -> None:
 async def test_model_write_through_serves_second_market(
     session_factory: SessionFactory,
 ) -> None:
-    decisions = _CountingDecisions("never_early")
+    decisions = _CountingDecisions("no_private_edge")
     question = "Will Ethereum dip to $1,200 November 23-29?"
     stamp = datetime(2026, 11, 25, 22, 0, tzinfo=UTC)
     async with session_factory() as session:
@@ -78,7 +78,7 @@ async def test_model_write_through_serves_second_market(
         )
         await session.commit()
     assert first.label_source == "model"
-    assert first.regime == "never_early"
+    assert first.regime == "no_private_edge"
     assert decisions.calls == 1
 
     async with session_factory() as session:
@@ -90,7 +90,7 @@ async def test_model_write_through_serves_second_market(
             model_enabled=True,
             now=stamp,
         )
-    assert second.regime == "never_early"
+    assert second.regime == "no_private_edge"
     assert second.label_source == "question"
     assert decisions.calls == 1
 
@@ -107,14 +107,14 @@ async def test_series_beats_question_cache(session_factory: SessionFactory) -> N
             question_key=normalized.key,
             question_text=normalized.text,
             policy_version=KNOWABILITY_POLICY_VERSION,
-            regime="never_early",
+            regime="no_private_edge",
             known_at=stamp,
             label_source="model",
         )
         await repo.append_series_cache(
             series_slug="series-q",
             policy_version=KNOWABILITY_POLICY_VERSION,
-            regime="always_latent",
+            regime="private_edge_possible",
             known_at=stamp,
             label_source="series",
         )
@@ -125,7 +125,7 @@ async def test_series_beats_question_cache(session_factory: SessionFactory) -> N
             series_slug="series-q",
             model_enabled=False,
         )
-    assert result.regime == "always_latent"
+    assert result.regime == "private_edge_possible"
     assert result.label_source == "series"
 
 

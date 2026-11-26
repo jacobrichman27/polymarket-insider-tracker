@@ -32,7 +32,7 @@ class _FakeDecisions:
     ) -> DecisionsRegimeResult:
         del question, series_slug, market_json
         self.calls += 1
-        return DecisionsRegimeResult(regime="always_latent")
+        return DecisionsRegimeResult(regime="private_edge_possible")
 
 
 @pytest.fixture
@@ -55,13 +55,13 @@ async def test_override_beats_series_and_model(session_factory: SessionFactory) 
             key_type="series",
             key_id="series-a",
             known_at=stamp,
-            regime="never_early",
+            regime="no_private_edge",
             policy_version=KNOWABILITY_POLICY_VERSION,
         )
         await repo.append_series_cache(
             series_slug="series-a",
             policy_version=KNOWABILITY_POLICY_VERSION,
-            regime="always_latent",
+            regime="private_edge_possible",
             known_at=stamp,
             label_source="series",
         )
@@ -73,7 +73,7 @@ async def test_override_beats_series_and_model(session_factory: SessionFactory) 
             decisions=decisions,
             model_enabled=True,
         )
-    assert result.regime == "never_early"
+    assert result.regime == "no_private_edge"
     assert result.label_source == "override"
     assert decisions.calls == 0
 
@@ -86,9 +86,8 @@ async def test_series_beats_template(session_factory: SessionFactory) -> None:
         await repo.append_series_cache(
             series_slug="series-b",
             policy_version=KNOWABILITY_POLICY_VERSION,
-            regime="windowed",
+            regime="private_edge_possible",
             known_at=stamp,
-            knowable_from=stamp,
             label_source="series",
         )
         await session.commit()
@@ -98,5 +97,5 @@ async def test_series_beats_template(session_factory: SessionFactory) -> None:
             series_slug="series-b",
             model_enabled=False,
         )
-    assert result.regime == "windowed"
+    assert result.regime == "private_edge_possible"
     assert result.label_source == "series"

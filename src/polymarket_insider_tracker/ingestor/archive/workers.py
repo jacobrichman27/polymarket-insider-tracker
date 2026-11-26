@@ -139,7 +139,7 @@ async def _persist_warm(
             question=question,
             series_slug=series_slug,
             info_knowability_regime=classification.regime,
-            knowable_from=classification.knowable_from,
+            knowable_from=None,
             knowability_label_source=classification.label_source,
             knowability_policy_version=classification.policy_version,
             source_version="gamma",

@@ -116,13 +116,15 @@
 
 ## Decision 17 — Concrete allowlist + dumb normalizer (2026-11-24)
 
-**Decision:** Lock seed allowlist to three ids from Data.md examples: `CRYPTO_UP_OR_DOWN_WINDOW` → `never_early`; `SPORTS_MATCHUP_WINNER` → `always_latent`; `EARNINGS_BEAT_EPS` → `always_latent`. Normalizer = lowercase/slot dates-money + ordered “all-of” cue rules; first match wins; ambiguity → miss. Cache miss on matched id seeds from allowlist default regime. No awards/`windowed` template in the reserved allowlist. Spec: `contracts/knowability-templates.md`.
+**Decision:** Lock seed allowlist to three ids from Data.md examples: `CRYPTO_UP_OR_DOWN_WINDOW` → `no_private_edge`; `SPORTS_MATCHUP_WINNER` → `private_edge_possible`; `EARNINGS_BEAT_EPS` → `private_edge_possible`. Normalizer = lowercase/slot dates-money + ordered “all-of” cue rules; first match wins; ambiguity → miss. Cache miss on matched id seeds from allowlist default regime. Spec: `contracts/knowability-templates.md`.
 
 **Rationale:** Operator asked for a clear, small, non-LLM definition; expandable only via versioned allowlist bump.
 
 **Amendment 2026-11-25:** Product stamp is `knowability.templates.v1` (planning formerly called this `a1.v1`). Policy stamp started as `knowability.v1`.
 
 **Amendment 2026-11-25 (later):** Policy stamp bumped to `knowability.v2`. Decisions regime choice copy is principle-based (privileged non-public edge vs public-only signals); examples removed so the model generalizes to unfamiliar market shapes. Existing `v1`-stamped rows remain historical; new classifications use `v2`.
+
+**Amendment 2026-11-25 (v3):** Policy stamp bumped to `knowability.v3`. Regimes renamed to binary `no_private_edge` / `private_edge_possible` / `unknown`. Drop live `knowable_from` / onset from the classifier and Decisions payload; featuring gate becomes `{private_edge_possible}` only.
 
 ## Decision 19 — Exact question-text cache (2026-11-25)
 

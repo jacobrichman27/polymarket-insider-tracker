@@ -18,11 +18,11 @@ Re-enabling matches requires a new allowlist version (`knowability.templates.v2`
 
 ## Reserved ids (`knowability.templates.v1`)
 
-| `template_id` | Default regime (if ever seeded) | Onset policy | Intent |
-| --- | --- | --- | --- |
-| `CRYPTO_UP_OR_DOWN_WINDOW` | `never_early` | null | Short-horizon crypto / spot price path |
-| `SPORTS_MATCHUP_WINNER` | `always_latent` | null | Head-to-head sports winner / matchup |
-| `EARNINGS_BEAT_EPS` | `always_latent` | null | Company earnings beat/miss / EPS |
+| `template_id` | Default regime (if ever seeded) | Intent |
+| --- | --- | --- |
+| `CRYPTO_UP_OR_DOWN_WINDOW` | `no_private_edge` | Short-horizon crypto / spot price path |
+| `SPORTS_MATCHUP_WINNER` | `private_edge_possible` | Head-to-head sports winner / matchup |
+| `EARNINGS_BEAT_EPS` | `private_edge_possible` | Company earnings beat/miss / EPS |
 
 No other template ids are valid until a versioned bump. Human **template** overrides in Postgres still win at lookup step 1 when keyed by these ids **and** matching is enabled (or when overrides are applied by `template_id` directly in a later path).
 
@@ -37,7 +37,7 @@ No other template ids are valid until a versioned bump. Human **template** overr
 - No model-proposed template ids.
 - No open-ended clustering of questions into new templates.
 - No active dumb-normalizer cue matching in shipped `knowability.templates.v1`.
-- No awards / locked-tally `windowed` template until a later allowlist version.
+- No onset / `knowable_from` fields on template seed rows under `knowability.v3`.
 
 ## Testability
 

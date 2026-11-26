@@ -16,8 +16,8 @@ Append-on-change dimension. Primary key `(condition_id, known_at)` (or equivalen
 | `known_at` | timestamptz | Version time UTC; append-only |
 | `token_outcomes` | jsonb | Map `token_id` → `{outcome, outcome_index}` (minimal repair surface) |
 | `question` / `series_slug` / template keys | text null | Classification inputs when available |
-| `info_knowability_regime` | text null | `never_early` / `always_latent` / `windowed` / `unknown` |
-| `knowable_from` | timestamptz null | Required semantics when regime is `windowed` |
+| `info_knowability_regime` | text null | Under `knowability.v3`: `no_private_edge` / `private_edge_possible` / `unknown` |
+| `knowable_from` | timestamptz null | Legacy; unused under `v3` (write `NULL`) |
 | `knowability_label_source` | text null | override / series / question / template / model / unknown |
 | `knowability_policy_version` | text null | Forward-applied policy id |
 | `source_version` | text null | Gamma/fetch provenance |
@@ -32,11 +32,10 @@ Versioned cache entries (append-on-change). Keys: `series_slug`, SHA-256 of norm
 | Field | Notes |
 | --- | --- |
 | regime | Cached classification |
-| onset_policy / `knowable_from` | For `windowed` |
 | `question_text` | Question cache only — normalized title for inspection |
 | label_source | Path that produced the cache write |
 
-Human overrides: durable append-on-change table keyed by `series_id` or `template_id` (regime, optional onset policy, notes, `known_at`, policy version). Optional seed file may bootstrap. Wins lookup order until superseded by a newer override version.
+Human overrides: durable append-on-change table keyed by `series_id` or `template_id` (regime, notes, `known_at`, policy version). Optional seed file may bootstrap. Wins lookup order until superseded by a newer override version.
 
 ### KnowabilityPolicy
 

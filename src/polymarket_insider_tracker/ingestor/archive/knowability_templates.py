@@ -18,9 +18,9 @@ SPORTS_MATCHUP_WINNER = "SPORTS_MATCHUP_WINNER"
 EARNINGS_BEAT_EPS = "EARNINGS_BEAT_EPS"
 
 ALLOWLIST_REGIMES: dict[str, str] = {
-    CRYPTO_UP_OR_DOWN_WINDOW: "never_early",
-    SPORTS_MATCHUP_WINNER: "always_latent",
-    EARNINGS_BEAT_EPS: "always_latent",
+    CRYPTO_UP_OR_DOWN_WINDOW: "no_private_edge",
+    SPORTS_MATCHUP_WINNER: "private_edge_possible",
+    EARNINGS_BEAT_EPS: "private_edge_possible",
 }
 
 
