@@ -8,6 +8,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,6 +32,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_SYNC_INTERVAL_SECONDS = 300  # 5 minutes
 DEFAULT_CACHE_TTL_SECONDS = 600  # 10 minutes
 DEFAULT_REDIS_KEY_PREFIX = "polymarket:market:"
+# After a hot-path CLOB miss, skip re-fetch for this long (seconds).
+DEFAULT_MISS_BACKOFF_SECONDS = 60.0
+# Hot-path miss: one attempt; background sync retains client default retries.
+HOT_PATH_MARKET_MAX_RETRIES = 0
 
 
 class SyncState(StrEnum):
@@ -138,6 +143,9 @@ class MarketMetadataSync:
         self._stats = SyncStats()
         self._sync_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
+        self._inflight: dict[str, asyncio.Task[MarketMetadata | None]] = {}
+        self._miss_until: dict[str, float] = {}
+        self._miss_backoff_seconds = DEFAULT_MISS_BACKOFF_SECONDS
 
     @property
     def state(self) -> SyncState:
@@ -356,7 +364,8 @@ class MarketMetadataSync:
         """Get market metadata with cache-first lookup.
 
         This first checks Redis cache. If not found or expired,
-        it fetches from the CLOB API and caches the result.
+        it fetches from the CLOB API and caches the result. Concurrent misses for
+        the same id share one in-flight fetch; failed misses back off briefly.
 
         Args:
             condition_id: The market condition ID.
@@ -364,33 +373,65 @@ class MarketMetadataSync:
         Returns:
             MarketMetadata if found, None otherwise.
         """
-        # Try cache first
-        key = f"{self._key_prefix}{condition_id}"
-        cached = await self._redis.get(key)
+        cached = await self._try_cached_market(condition_id)
+        if cached is not None:
+            return cached
+        return await self._coalesced_fetch_market(condition_id)
 
-        if cached:
-            try:
-                return await self._volumes.merge(MarketMetadata.from_dict(json.loads(cached)))
-            except (json.JSONDecodeError, KeyError) as e:
-                logger.warning(
-                    "Failed to parse cached market %s: %s",
-                    condition_id,
-                    redact_exception_message(e),
-                )
-
-        # Cache miss - fetch from API
+    async def _try_cached_market(self, condition_id: str) -> MarketMetadata | None:
+        cached = await self._redis.get(f"{self._key_prefix}{condition_id}")
+        if not cached:
+            return None
         try:
-            market = await asyncio.to_thread(self._clob.get_market, condition_id)
-            if market:
-                metadata = MarketMetadata.from_market(market)
-                await self._cache_market_if_absent(metadata)
-                return await self._volumes.merge(metadata, no_record_reason="clob_miss_path")
+            return await self._volumes.merge(MarketMetadata.from_dict(json.loads(cached)))
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(
+                "Failed to parse cached market %s: %s",
+                condition_id,
+                redact_exception_message(e),
+            )
+            return None
+
+    def _miss_is_cooling(self, condition_id: str) -> bool:
+        until = self._miss_until.get(condition_id)
+        return until is not None and time.monotonic() < until
+
+    def _remember_miss(self, condition_id: str) -> None:
+        self._miss_until[condition_id] = time.monotonic() + self._miss_backoff_seconds
+
+    async def _coalesced_fetch_market(self, condition_id: str) -> MarketMetadata | None:
+        if self._miss_is_cooling(condition_id):
+            return None
+        existing = self._inflight.get(condition_id)
+        if existing is not None:
+            return await existing
+        task = asyncio.create_task(self._fetch_market_miss(condition_id))
+        self._inflight[condition_id] = task
+        try:
+            return await task
+        finally:
+            if self._inflight.get(condition_id) is task:
+                del self._inflight[condition_id]
+
+    async def _fetch_market_miss(self, condition_id: str) -> MarketMetadata | None:
+        try:
+            market = await asyncio.to_thread(
+                self._clob.get_market,
+                condition_id,
+                max_retries=HOT_PATH_MARKET_MAX_RETRIES,
+            )
         except Exception as e:
+            self._remember_miss(condition_id)
             logger.warning(
                 "Failed to fetch market %s: %s", condition_id, redact_exception_message(e)
             )
-
-        return None
+            return None
+        if not market:
+            self._remember_miss(condition_id)
+            return None
+        metadata = MarketMetadata.from_market(market)
+        await self._cache_market_if_absent(metadata)
+        return await self._volumes.merge(metadata, no_record_reason="clob_miss_path")
 
     async def _parse_matching_market(
         self, key: bytes | str, category: str

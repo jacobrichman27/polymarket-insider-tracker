@@ -249,12 +249,12 @@ class ClobClient:
         logger.debug("Fetched %d markets", len(all_markets))
         return all_markets
 
-    @with_retry()
-    def get_market(self, condition_id: str) -> Market:
+    def get_market(self, condition_id: str, *, max_retries: int | None = None) -> Market:
         """Fetch a specific market by its condition ID.
 
         Args:
             condition_id: The market's condition ID.
+            max_retries: Override client default retries (use ``0`` on hot-path miss).
 
         Returns:
             Market object.
@@ -262,8 +262,17 @@ class ClobClient:
         Raises:
             ClobClientError: If the market is not found.
         """
-        self._rate_limiter.acquire_sync()
+        retries = self._max_retries if max_retries is None else max_retries
+        return _execute_with_retry(
+            partial(self._get_market_once, condition_id),
+            "get_market",
+            retries,
+            DEFAULT_RETRY_BASE_DELAY,
+            (Exception,),
+        )
 
+    def _get_market_once(self, condition_id: str) -> Market:
+        self._rate_limiter.acquire_sync()
         try:
             response = self._client.get_market(condition_id)
             return Market.from_dict(response)

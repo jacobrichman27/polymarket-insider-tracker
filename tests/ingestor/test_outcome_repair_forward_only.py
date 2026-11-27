@@ -88,6 +88,19 @@ def test_decide_repair_usable_api_is_not_needed() -> None:
     assert decision.outcome_repaired is None
 
 
+def test_decide_repair_raw_999_not_treated_as_usable_api() -> None:
+    decision = decide_repair(
+        outcome="Yes",
+        outcome_index=0,
+        token_id="tok",
+        token_outcomes={"tok": {"outcome": "Yes", "outcome_index": 0}},
+        raw_outcome_index=999,
+    )
+    assert decision.status == "ok"
+    assert decision.outcome_repaired == "Yes"
+    assert decision.outcome_index_repaired == 0
+
+
 @pytest.mark.asyncio
 async def test_pre_cutover_rows_untouched(session_factory: SessionFactory) -> None:
     cutover = datetime(2026, 11, 24, 12, 0, tzinfo=UTC)

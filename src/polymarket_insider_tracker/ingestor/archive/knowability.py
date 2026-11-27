@@ -12,8 +12,11 @@ from typing import Protocol
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from polymarket_insider_tracker.ingestor.archive.decisions_client import (
+    KNOWABILITY_MODEL_VERSION,
+    TITLE_RULE_LABEL_SOURCE,
     DecisionsClient,
     NullDecisionsClient,
+    no_edge_title_rule,
 )
 from polymarket_insider_tracker.ingestor.archive.knowability_templates import (
     TEMPLATE_ALLOWLIST_VERSION,
@@ -22,8 +25,14 @@ from polymarket_insider_tracker.ingestor.archive.knowability_templates import (
 )
 from polymarket_insider_tracker.storage.repos import KnowabilityRepository
 
-KNOWABILITY_POLICY_VERSION = "knowability.v3"
-VALID_REGIMES = frozenset({"no_private_edge", "private_edge_possible", "unknown"})
+KNOWABILITY_POLICY_VERSION = "knowability.v5"
+VALID_REGIMES = frozenset(
+    {
+        "no_private_edge",
+        "private_edge_possible",
+        "unknown",
+    }
+)
 _WHITESPACE = re.compile(r"\s+")
 
 
@@ -34,6 +43,8 @@ class KnowabilityClassification:
     template_id: str | None = None
     series_slug: str | None = None
     policy_version: str = KNOWABILITY_POLICY_VERSION
+    confidence: float | None = None
+    model_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,7 +108,7 @@ async def classify_market(
     budget: ModelBudget | None = None,
     now: datetime | None = None,
 ) -> KnowabilityClassification:
-    """Lookup: override → series → question → template → optional Decisions."""
+    """Lookup: override → series → question → template → title rule → optional Decisions."""
     repo = KnowabilityRepository(session)
     stamp = now if now is not None else datetime.now(UTC)
     cached = await _lookup_caches(
@@ -105,6 +116,11 @@ async def classify_market(
     )
     if cached is not None:
         return cached
+    title_hit = await _try_title_rule(
+        repo, question=question or "", series_slug=series_slug, stamp=stamp
+    )
+    if title_hit is not None:
+        return title_hit
     if not model_enabled:
         return KnowabilityClassification(regime="unknown", label_source="unknown")
     return await _try_model(
@@ -115,6 +131,30 @@ async def classify_market(
         series_slug=series_slug,
         market_json=market_json,
         stamp=stamp,
+    )
+
+
+async def _try_title_rule(
+    repo: KnowabilityRepository,
+    *,
+    question: str,
+    series_slug: str | None,
+    stamp: datetime,
+) -> KnowabilityClassification | None:
+    if no_edge_title_rule(question) is None:
+        return None
+    await _write_non_unknown_caches(
+        repo,
+        question=question,
+        series_slug=None,  # do not paint whole series from a title cue
+        regime="no_private_edge",
+        stamp=stamp,
+        label_source=TITLE_RULE_LABEL_SOURCE,
+    )
+    return KnowabilityClassification(
+        regime="no_private_edge",
+        label_source=TITLE_RULE_LABEL_SOURCE,
+        series_slug=series_slug,
     )
 
 
@@ -137,7 +177,11 @@ async def _series_override(
 ) -> KnowabilityClassification | None:
     if not series_slug:
         return None
-    row = await repo.latest_override(key_type="series", key_id=series_slug)
+    row = await repo.latest_override(
+        key_type="series",
+        key_id=series_slug,
+        policy_version=KNOWABILITY_POLICY_VERSION,
+    )
     if row is None:
         return None
     return _override_result(regime=row.regime, series_slug=series_slug)
@@ -155,7 +199,11 @@ async def _template_override(
     match = match_template(question, category=category)
     if match is None:
         return None
-    row = await repo.latest_override(key_type="template", key_id=match.template_id)
+    row = await repo.latest_override(
+        key_type="template",
+        key_id=match.template_id,
+        policy_version=KNOWABILITY_POLICY_VERSION,
+    )
     if row is None:
         return None
     return _override_result(
@@ -240,13 +288,14 @@ async def _try_template(
     )
 
 
-async def _write_model_caches(
+async def _write_non_unknown_caches(
     repo: KnowabilityRepository,
     *,
     question: str,
     series_slug: str | None,
     regime: str,
     stamp: datetime,
+    label_source: str,
 ) -> None:
     if regime == "unknown":
         return
@@ -256,7 +305,7 @@ async def _write_model_caches(
             policy_version=KNOWABILITY_POLICY_VERSION,
             regime=regime,
             known_at=stamp,
-            label_source="model",
+            label_source=label_source,
         )
     normalized = normalize_question_text(question)
     if normalized is None:
@@ -267,7 +316,7 @@ async def _write_model_caches(
         policy_version=KNOWABILITY_POLICY_VERSION,
         regime=regime,
         known_at=stamp,
-        label_source="model",
+        label_source=label_source,
     )
 
 
@@ -287,14 +336,21 @@ async def _try_model(
         question=question, series_slug=series_slug, market_json=market_json
     )
     regime = result.regime if result.regime in VALID_REGIMES else "unknown"
-    await _write_model_caches(
-        repo, question=question, series_slug=series_slug, regime=regime, stamp=stamp
+    await _write_non_unknown_caches(
+        repo,
+        question=question,
+        series_slug=series_slug,
+        regime=regime,
+        stamp=stamp,
+        label_source="model",
     )
     source = "model" if regime != "unknown" else "unknown"
     return KnowabilityClassification(
         regime=regime,
         label_source=source,
         series_slug=series_slug,
+        confidence=result.confidence,
+        model_version=KNOWABILITY_MODEL_VERSION if source == "model" else None,
     )
 
 

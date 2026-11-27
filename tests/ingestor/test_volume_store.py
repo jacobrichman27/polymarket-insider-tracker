@@ -247,9 +247,9 @@ class RacingClob(FakeClobClient):
         self._winner = winner
         self._writer = writer
 
-    def get_market(self, condition_id: str) -> Market:
+    def get_market(self, condition_id: str, *, max_retries: int | None = None) -> Market:
         self._writer.set(f"{DEFAULT_REDIS_KEY_PREFIX}{CID}", json.dumps(self._winner.to_dict()))
-        return super().get_market(condition_id)
+        return super().get_market(condition_id, max_retries=max_retries)
 
 
 @pytest.mark.asyncio

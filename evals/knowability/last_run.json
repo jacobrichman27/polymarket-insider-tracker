@@ -1,0 +1,413 @@
+{
+  "by_expected_regime": {
+    "no_private_edge": {
+      "failed": 6,
+      "passed": 8,
+      "scored": 14
+    },
+    "private_edge_possible": {
+      "failed": 1,
+      "passed": 12,
+      "scored": 13
+    }
+  },
+  "by_path": {
+    "model": 22,
+    "title_rule": 2,
+    "unknown": 3
+  },
+  "by_predicted_regime": {
+    "no_private_edge": 8,
+    "private_edge_possible": 16,
+    "unknown": 3
+  },
+  "captured_at": "2026-11-27T14:14:46.698663+00:00",
+  "cases": [
+    {
+      "confidence": null,
+      "expected_path": "title_rule",
+      "expected_regime": "no_private_edge",
+      "got_path": "title_rule",
+      "got_regime": "no_private_edge",
+      "id": "title-temperature-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": null,
+      "expected_path": "title_rule",
+      "expected_regime": "no_private_edge",
+      "got_path": "title_rule",
+      "got_regime": "no_private_edge",
+      "id": "title-ou-total-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.07,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "no_private_edge",
+      "id": "model-price-level-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.99,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-spread-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.97,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-spread-002",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.64,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-moneyline-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.8,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-moneyline-002",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.88,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-esports-bo3-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.82,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "unknown",
+      "got_regime": "unknown",
+      "id": "model-election-001",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "confidence": 0.99,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-awards-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.28,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "unknown",
+      "got_regime": "unknown",
+      "id": "model-search-count-001",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "confidence": 0.25,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-season-td-001",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "confidence": 0.31,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "no_private_edge",
+      "id": "model-season-yards-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.52,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "no_private_edge",
+      "id": "model-season-td-002",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.1,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "unknown",
+      "got_regime": "unknown",
+      "id": "model-qualify-playoffs-001",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "confidence": 0.35,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-box-office-001",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "confidence": 1.0,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-signed-handicap-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.94,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "no_private_edge",
+      "id": "gen-wiki-pageviews-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.74,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "no_private_edge",
+      "id": "gen-github-stars-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.27,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-tide-height-001",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "confidence": 0.51,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-airport-arrivals-001",
+      "passed": false,
+      "skipped": false
+    },
+    {
+      "confidence": 0.55,
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "no_private_edge",
+      "id": "gen-chess-rating-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.99,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-fda-approval-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.86,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-patent-grant-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.96,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-studio-greenlight-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.94,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-sealed-auction-001",
+      "passed": true,
+      "skipped": false
+    },
+    {
+      "confidence": 0.93,
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-admissions-001",
+      "passed": true,
+      "skipped": false
+    }
+  ],
+  "failed": 7,
+  "failures": [
+    {
+      "expected_path": "model",
+      "expected_regime": "private_edge_possible",
+      "got_path": "unknown",
+      "got_regime": "unknown",
+      "id": "model-election-001"
+    },
+    {
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "unknown",
+      "got_regime": "unknown",
+      "id": "model-search-count-001"
+    },
+    {
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-season-td-001"
+    },
+    {
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "unknown",
+      "got_regime": "unknown",
+      "id": "model-qualify-playoffs-001"
+    },
+    {
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "model-box-office-001"
+    },
+    {
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-tide-height-001"
+    },
+    {
+      "expected_path": "model",
+      "expected_regime": "no_private_edge",
+      "got_path": "model",
+      "got_regime": "private_edge_possible",
+      "id": "gen-airport-arrivals-001"
+    }
+  ],
+  "failures_by_expected_regime": {
+    "no_private_edge": [
+      {
+        "expected_path": "model",
+        "expected_regime": "no_private_edge",
+        "got_path": "unknown",
+        "got_regime": "unknown",
+        "id": "model-search-count-001"
+      },
+      {
+        "expected_path": "model",
+        "expected_regime": "no_private_edge",
+        "got_path": "model",
+        "got_regime": "private_edge_possible",
+        "id": "model-season-td-001"
+      },
+      {
+        "expected_path": "model",
+        "expected_regime": "no_private_edge",
+        "got_path": "unknown",
+        "got_regime": "unknown",
+        "id": "model-qualify-playoffs-001"
+      },
+      {
+        "expected_path": "model",
+        "expected_regime": "no_private_edge",
+        "got_path": "model",
+        "got_regime": "private_edge_possible",
+        "id": "model-box-office-001"
+      },
+      {
+        "expected_path": "model",
+        "expected_regime": "no_private_edge",
+        "got_path": "model",
+        "got_regime": "private_edge_possible",
+        "id": "gen-tide-height-001"
+      },
+      {
+        "expected_path": "model",
+        "expected_regime": "no_private_edge",
+        "got_path": "model",
+        "got_regime": "private_edge_possible",
+        "id": "gen-airport-arrivals-001"
+      }
+    ],
+    "private_edge_possible": [
+      {
+        "expected_path": "model",
+        "expected_regime": "private_edge_possible",
+        "got_path": "unknown",
+        "got_regime": "unknown",
+        "id": "model-election-001"
+      }
+    ]
+  },
+  "mode": "live",
+  "passed": 20,
+  "policy_version": "knowability.v5",
+  "prompt_version": "knowability.prompt.v8",
+  "scored": 27,
+  "set_path": "/Users/jacobrichman27/Documents/CodingProjects/InsiderTrades/evals/knowability/golden.v1.jsonl",
+  "set_version": "knowability.golden.v1",
+  "skipped": 0,
+  "total": 27
+}

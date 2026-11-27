@@ -18,6 +18,17 @@ from pydantic import AfterValidator, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from polymarket_insider_tracker.archive_defaults import (
+    DEFAULT_CLASSIFIER_CONTROL_SAMPLE_RATE,
+    DEFAULT_ENRICHMENT_BUDGET_VERSION,
+    DEFAULT_ENRICHMENT_HYDRATE_PAGES,
+    DEFAULT_ENRICHMENT_HYDRATE_SECONDS,
+    DEFAULT_ENRICHMENT_RPC_CAP,
+    DEFAULT_ENRICHMENT_WALL_SECONDS,
+    DEFAULT_FEATURE_VERSION,
+    DEFAULT_FEATURING_CONFIG_VERSION,
+    DEFAULT_FEATURING_NOTIONAL_CUTOFF_USDC,
+    DEFAULT_FINGERPRINT_VERSION,
+    DEFAULT_HOT_WINDOW_DAYS,
     DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY,
 )
 from polymarket_insider_tracker.deprecated_api_key import DeprecatedApiKey
@@ -422,6 +433,88 @@ class ArchiveSettings(BaseSettings):
         alias="ARCHIVE_KNOWABILITY_MODEL_API_KEY",
         description="OpenAI Decisions API key (secret); absent → model effectively off",
     )
+    featuring_enabled: bool = Field(
+        default=False,
+        alias="ARCHIVE_FEATURING_ENABLED",
+        description="Async featuring/enrichment workers (requires ARCHIVE_ENABLED; default off)",
+    )
+    featuring_config_version: str = Field(
+        default=DEFAULT_FEATURING_CONFIG_VERSION,
+        alias="ARCHIVE_FEATURING_CONFIG_VERSION",
+        description="Version stamp for featuring gate + cutoff policy",
+    )
+    featuring_notional_cutoff_usdc: int = Field(
+        default=DEFAULT_FEATURING_NOTIONAL_CUTOFF_USDC,
+        alias="ARCHIVE_FEATURING_NOTIONAL_CUTOFF_USDC",
+        description="Provisional notional gate in USDC (versioned with featuring_config_version)",
+        ge=0,
+    )
+    featuring_unknown_opt_in: bool = Field(
+        default=False,
+        alias="ARCHIVE_FEATURING_UNKNOWN_OPT_IN",
+        description="Opt unknown regime into featuring only via explicit versioned bump",
+    )
+    classifier_control_sample_rate: float = Field(
+        default=DEFAULT_CLASSIFIER_CONTROL_SAMPLE_RATE,
+        alias="ARCHIVE_CLASSIFIER_CONTROL_SAMPLE_RATE",
+        description="Seeded sample rate of featuring-rejected no_private_edge fills",
+        ge=0.0,
+        le=1.0,
+    )
+    enrichment_budget_version: str = Field(
+        default=DEFAULT_ENRICHMENT_BUDGET_VERSION,
+        alias="ARCHIVE_ENRICHMENT_BUDGET_VERSION",
+        description="Version stamp for enrichment wall/RPC/hydrate caps",
+    )
+    enrichment_wall_seconds: int = Field(
+        default=DEFAULT_ENRICHMENT_WALL_SECONDS,
+        alias="ARCHIVE_ENRICHMENT_WALL_SECONDS",
+        description="Provisional wall-clock budget per enrichment attempt",
+        ge=1,
+    )
+    enrichment_rpc_cap: int = Field(
+        default=DEFAULT_ENRICHMENT_RPC_CAP,
+        alias="ARCHIVE_ENRICHMENT_RPC_CAP",
+        description="Provisional Polygon RPC call budget per featured attempt",
+        ge=0,
+    )
+    enrichment_hydrate_pages: int = Field(
+        default=DEFAULT_ENRICHMENT_HYDRATE_PAGES,
+        alias="ARCHIVE_ENRICHMENT_HYDRATE_PAGES",
+        description="Provisional Data API page cap for lifetime hydrate",
+        ge=0,
+    )
+    enrichment_hydrate_seconds: int = Field(
+        default=DEFAULT_ENRICHMENT_HYDRATE_SECONDS,
+        alias="ARCHIVE_ENRICHMENT_HYDRATE_SECONDS",
+        description="Provisional wall budget for lifetime hydrate arm",
+        ge=1,
+    )
+    fingerprint_version: str = Field(
+        default=DEFAULT_FINGERPRINT_VERSION,
+        alias="ARCHIVE_FINGERPRINT_VERSION",
+        description="Version stamp for strong vs weak fill fingerprint rules",
+    )
+    feature_version: str = Field(
+        default=DEFAULT_FEATURE_VERSION,
+        alias="ARCHIVE_FEATURE_VERSION",
+        description="Version stamp for optional trade_features snapshots",
+    )
+    hot_window_days: int = Field(
+        default=DEFAULT_HOT_WINDOW_DAYS,
+        alias="ARCHIVE_HOT_WINDOW_DAYS",
+        description="Hot retention window used for featured backfill eligibility (7–30)",
+        ge=7,
+        le=30,
+    )
+    collect_priority: bool = Field(
+        default=False,
+        alias="ARCHIVE_COLLECT_PRIORITY",
+        description=(
+            "When archive is on, skip size-anomaly CLOB lookups on the trade hot path "
+            "so acquisition is not starved during tape burn-in"
+        ),
+    )
 
     @property
     def knowability_model_credentials_present(self) -> bool:
@@ -435,6 +528,14 @@ class ArchiveSettings(BaseSettings):
     @property
     def outcome_repair_effectively_enabled(self) -> bool:
         return self.enabled and self.outcome_repair_enabled
+
+    @property
+    def featuring_effectively_enabled(self) -> bool:
+        return self.enabled and self.featuring_enabled
+
+    @property
+    def collect_priority_effectively_enabled(self) -> bool:
+        return self.enabled and self.collect_priority
 
 
 class Settings(BaseSettings):
@@ -523,22 +624,36 @@ class Settings(BaseSettings):
             "log_level": self.log_level,
             "health_port": str(self.health_port),
             "dry_run": str(self.dry_run),
-            "archive": {
-                "enabled": str(self.archive.enabled),
-                "raw_retention": str(self.archive.raw_retention),
-                "outcome_repair_enabled": str(self.archive.outcome_repair_enabled),
-                "outcome_repair_lag_seconds": str(self.archive.outcome_repair_lag_seconds),
-                "outcome_repair_unrepaired_max_ratio": str(
-                    self.archive.outcome_repair_unrepaired_max_ratio
-                ),
-                "knowability_model_enabled": str(self.archive.knowability_model_enabled),
-                "knowability_model_max_calls_per_day": str(
-                    self.archive.knowability_model_max_calls_per_day
-                ),
-                "knowability_model_api_key": (
-                    "(set)" if self.archive.knowability_model_credentials_present else "(not set)"
-                ),
-            },
+            "archive": self._archive_redacted_summary(),
+        }
+
+    def _archive_redacted_summary(self) -> dict[str, str]:
+        archive = self.archive
+        return {
+            "enabled": str(archive.enabled),
+            "raw_retention": str(archive.raw_retention),
+            "outcome_repair_enabled": str(archive.outcome_repair_enabled),
+            "outcome_repair_lag_seconds": str(archive.outcome_repair_lag_seconds),
+            "outcome_repair_unrepaired_max_ratio": str(archive.outcome_repair_unrepaired_max_ratio),
+            "knowability_model_enabled": str(archive.knowability_model_enabled),
+            "knowability_model_max_calls_per_day": str(archive.knowability_model_max_calls_per_day),
+            "knowability_model_api_key": (
+                "(set)" if archive.knowability_model_credentials_present else "(not set)"
+            ),
+            "featuring_enabled": str(archive.featuring_enabled),
+            "featuring_config_version": archive.featuring_config_version,
+            "featuring_notional_cutoff_usdc": str(archive.featuring_notional_cutoff_usdc),
+            "featuring_unknown_opt_in": str(archive.featuring_unknown_opt_in),
+            "classifier_control_sample_rate": str(archive.classifier_control_sample_rate),
+            "enrichment_budget_version": archive.enrichment_budget_version,
+            "enrichment_wall_seconds": str(archive.enrichment_wall_seconds),
+            "enrichment_rpc_cap": str(archive.enrichment_rpc_cap),
+            "enrichment_hydrate_pages": str(archive.enrichment_hydrate_pages),
+            "enrichment_hydrate_seconds": str(archive.enrichment_hydrate_seconds),
+            "fingerprint_version": archive.fingerprint_version,
+            "feature_version": archive.feature_version,
+            "hot_window_days": str(archive.hot_window_days),
+            "collect_priority": str(archive.collect_priority),
         }
 
     @staticmethod

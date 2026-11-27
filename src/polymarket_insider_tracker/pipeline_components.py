@@ -305,6 +305,7 @@ def bind_archive_write(
         if ok:
             health.clear_owed(observation.identity)
             _schedule_market_warm(settings, db_manager, observation, market_warm)
+            _schedule_featuring_enqueue(settings, db_manager, observation)
         else:
             metrics.record_write_failure("persist")
         publish_owed_metrics(health, metrics, now)
@@ -328,6 +329,22 @@ def _schedule_market_warm(
         condition_id=observation.event.market_id,
         archive=settings.archive,
         coordinator=market_warm,
+    )
+
+
+def _schedule_featuring_enqueue(
+    settings: Settings,
+    db_manager: DatabaseManager,
+    observation: TradeObservation,
+) -> None:
+    """Enqueue featuring evaluation without awaiting (FR-003)."""
+    from polymarket_insider_tracker.ingestor.archive.featuring import schedule_featuring_enqueue
+
+    schedule_featuring_enqueue(
+        asyncio.get_running_loop(),
+        db_manager,
+        observation=observation,
+        archive=settings.archive,
     )
 
 

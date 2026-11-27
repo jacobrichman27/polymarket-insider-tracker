@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -22,6 +22,8 @@ from sqlalchemy.exc import IntegrityError
 from polymarket_insider_tracker.constants import UNRECORDED_DELIVERY_DISPOSITION
 from polymarket_insider_tracker.storage.models import (
     ArchiveCollectorStateModel,
+    ArchiveWalletModel,
+    EnrichmentWorkItemModel,
     FundingTransferModel,
     IngestGapEventModel,
     KnowabilityOverrideModel,
@@ -29,7 +31,9 @@ from polymarket_insider_tracker.storage.models import (
     KnowabilitySeriesCacheModel,
     KnowabilityTemplateCacheModel,
     MarketVersionModel,
+    ProxyFundingModel,
     RiskAssessmentModel,
+    TradeFeaturesModel,
     TradeModel,
     WalletProfileModel,
     WalletRelationshipModel,
@@ -881,6 +885,16 @@ class TradeArchiveRepository:
         )
         return rows_affected(result)
 
+    async def requeue_unrepaired_for_condition(self, *, condition_id: str) -> int:
+        """Return ``unrepaired`` rows to ``not_attempted`` after markets warm."""
+        result = await self.session.execute(
+            update(TradeModel)
+            .where(TradeModel.condition_id == condition_id)
+            .where(TradeModel.outcome_repair_status == "unrepaired")
+            .values(outcome_repair_status="not_attempted")
+        )
+        return rows_affected(result)
+
     async def count_outcome_repair_kpi(
         self,
         *,
@@ -952,11 +966,14 @@ class TradeArchiveRepository:
 
 
 def _thin_api_outcome_clause() -> Any:
+    """Thin when typed columns are empty/999 or the raw API index is 999."""
+    raw_index = TradeModel.raw_row_json["outcomeIndex"].as_string()
     return or_(
         TradeModel.outcome_index == 999,
         TradeModel.outcome.is_(None),
         TradeModel.outcome == "",
-    )
+        raw_index == "999",
+    )  # raw path: hot-path repairs must not hide thin API rows from KPI
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -971,24 +988,33 @@ class MarketsRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def latest(self, condition_id: str) -> MarketVersionModel | None:
+    async def latest(
+        self, condition_id: str, *, policy_version: str | None = None
+    ) -> MarketVersionModel | None:
+        stmt = select(MarketVersionModel).where(MarketVersionModel.condition_id == condition_id)
+        if policy_version is not None:
+            stmt = stmt.where(MarketVersionModel.knowability_policy_version == policy_version)
         result = await self.session.execute(
-            select(MarketVersionModel)
-            .where(MarketVersionModel.condition_id == condition_id)
-            .order_by(MarketVersionModel.known_at.desc())
-            .limit(1)
+            stmt.order_by(MarketVersionModel.known_at.desc()).limit(1)
         )
         return result.scalar_one_or_none()
 
     async def latest_at_or_before(
-        self, condition_id: str, at: datetime
+        self,
+        condition_id: str,
+        at: datetime,
+        *,
+        policy_version: str | None = None,
     ) -> MarketVersionModel | None:
-        result = await self.session.execute(
+        stmt = (
             select(MarketVersionModel)
             .where(MarketVersionModel.condition_id == condition_id)
             .where(MarketVersionModel.known_at <= at)
-            .order_by(MarketVersionModel.known_at.desc())
-            .limit(1)
+        )
+        if policy_version is not None:
+            stmt = stmt.where(MarketVersionModel.knowability_policy_version == policy_version)
+        result = await self.session.execute(
+            stmt.order_by(MarketVersionModel.known_at.desc()).limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -1004,6 +1030,8 @@ class MarketsRepository:
         knowable_from: datetime | None = None,
         knowability_label_source: str | None = None,
         knowability_policy_version: str | None = None,
+        knowability_confidence: float | None = None,
+        knowability_model_version: str | None = None,
         source_version: str | None = None,
         raw_market_json: object | None = None,
     ) -> MarketVersionModel:
@@ -1017,6 +1045,8 @@ class MarketsRepository:
             knowable_from=knowable_from,
             knowability_label_source=knowability_label_source,
             knowability_policy_version=knowability_policy_version,
+            knowability_confidence=knowability_confidence,
+            knowability_model_version=knowability_model_version,
             source_version=source_version,
             raw_market_json=raw_market_json,
         )
@@ -1032,14 +1062,21 @@ class KnowabilityRepository:
         self.session = session
 
     async def latest_override(
-        self, *, key_type: str, key_id: str
+        self,
+        *,
+        key_type: str,
+        key_id: str,
+        policy_version: str | None = None,
     ) -> KnowabilityOverrideModel | None:
-        result = await self.session.execute(
+        stmt = (
             select(KnowabilityOverrideModel)
             .where(KnowabilityOverrideModel.key_type == key_type)
             .where(KnowabilityOverrideModel.key_id == key_id)
-            .order_by(KnowabilityOverrideModel.known_at.desc())
-            .limit(1)
+        )
+        if policy_version is not None:
+            stmt = stmt.where(KnowabilityOverrideModel.policy_version == policy_version)
+        result = await self.session.execute(
+            stmt.order_by(KnowabilityOverrideModel.known_at.desc()).limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -1170,3 +1207,238 @@ class KnowabilityRepository:
         self.session.add(model)
         await self.session.flush()
         return model
+
+
+class FeaturingEnrichmentRepository:
+    """Enqueue, claim, and materialize featured enrichment artifacts."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def enqueue_work(
+        self,
+        *,
+        observation_id: str,
+        trade_ts: datetime,
+        enrichment_budget_version: str,
+        trigger: str,
+        enqueued_at: datetime,
+    ) -> EnrichmentWorkItemModel | None:
+        existing = await self._find_work(
+            observation_id, trade_ts, enrichment_budget_version, trigger
+        )
+        if existing is not None:
+            return None
+        model = EnrichmentWorkItemModel(
+            observation_id=observation_id,
+            trade_ts=trade_ts,
+            enrichment_budget_version=enrichment_budget_version,
+            trigger=trigger,
+            status="pending",
+            enqueued_at=enqueued_at,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
+
+    async def enqueue_rematerialize(
+        self,
+        *,
+        observation_id: str,
+        trade_ts: datetime,
+        enrichment_budget_version: str,
+        enqueued_at: datetime,
+    ) -> EnrichmentWorkItemModel | None:
+        """Enqueue a ``retry`` work item for rematerialize (separate from insert_time)."""
+        return await self.enqueue_work(
+            observation_id=observation_id,
+            trade_ts=trade_ts,
+            enrichment_budget_version=enrichment_budget_version,
+            trigger="retry",
+            enqueued_at=enqueued_at,
+        )
+
+    async def _find_work(
+        self,
+        observation_id: str,
+        trade_ts: datetime,
+        enrichment_budget_version: str,
+        trigger: str,
+    ) -> EnrichmentWorkItemModel | None:
+        result = await self.session.execute(
+            select(EnrichmentWorkItemModel)
+            .where(EnrichmentWorkItemModel.observation_id == observation_id)
+            .where(EnrichmentWorkItemModel.trade_ts == trade_ts)
+            .where(EnrichmentWorkItemModel.enrichment_budget_version == enrichment_budget_version)
+            .where(EnrichmentWorkItemModel.trigger == trigger)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def claim_next_pending(self, *, now: datetime) -> EnrichmentWorkItemModel | None:
+        # Live inserts before hot-window backfill so featuring lag stays bounded.
+        trigger_rank = case(
+            (EnrichmentWorkItemModel.trigger == "insert_time", 0),
+            (EnrichmentWorkItemModel.trigger == "classifier_control", 0),
+            (EnrichmentWorkItemModel.trigger == "retry", 1),
+            (EnrichmentWorkItemModel.trigger == "regime_upgrade", 2),
+            else_=3,
+        )
+        result = await self.session.execute(
+            select(EnrichmentWorkItemModel)
+            .where(EnrichmentWorkItemModel.status == "pending")
+            .order_by(trigger_rank.asc(), EnrichmentWorkItemModel.enqueued_at.asc())
+            .limit(1)
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return None
+        model.status = "running"
+        model.started_at = now
+        await self.session.flush()
+        return model
+
+    async def complete_work(self, work_id: int, *, finished_at: datetime) -> None:
+        await self._set_work_terminal(work_id, status="completed", finished_at=finished_at)
+
+    async def abandon_work(
+        self, work_id: int, *, finished_at: datetime, last_error: str | None
+    ) -> None:
+        await self._set_work_terminal(
+            work_id, status="abandoned", finished_at=finished_at, last_error=last_error
+        )
+
+    async def _set_work_terminal(
+        self,
+        work_id: int,
+        *,
+        status: str,
+        finished_at: datetime,
+        last_error: str | None = None,
+    ) -> None:
+        result = await self.session.execute(
+            select(EnrichmentWorkItemModel).where(EnrichmentWorkItemModel.work_id == work_id)
+        )
+        model = result.scalar_one_or_none()
+        if model is None:
+            return
+        model.status = status
+        model.finished_at = finished_at
+        if last_error is not None:
+            model.last_error = last_error
+        await self.session.flush()
+
+    async def update_arm_statuses(
+        self,
+        *,
+        observation_id: str,
+        trade_ts: datetime,
+        gamma_status: str | None = None,
+        receipt_status: str | None = None,
+        funding_status: str | None = None,
+        hydrate_status: str | None = None,
+    ) -> None:
+        result = await self.session.execute(
+            select(TradeModel)
+            .where(TradeModel.observation_id == observation_id)
+            .where(TradeModel.trade_ts == trade_ts)
+            .limit(1)
+        )
+        trade = result.scalar_one_or_none()
+        if trade is None:
+            return
+        self._apply_arm_statuses(
+            trade,
+            gamma_status=gamma_status,
+            receipt_status=receipt_status,
+            funding_status=funding_status,
+            hydrate_status=hydrate_status,
+        )
+        await self.session.flush()
+
+    def _apply_arm_statuses(
+        self,
+        trade: TradeModel,
+        *,
+        gamma_status: str | None,
+        receipt_status: str | None,
+        funding_status: str | None,
+        hydrate_status: str | None,
+    ) -> None:
+        if gamma_status is not None:
+            trade.gamma_enrichment_status = gamma_status
+        if receipt_status is not None:
+            trade.receipt_status = receipt_status
+        if funding_status is not None:
+            trade.funding_lookup_status = funding_status
+        if hydrate_status is not None:
+            trade.wallet_hydrate_status = hydrate_status
+
+    async def insert_live_as_of_features(
+        self,
+        *,
+        observation_id: str,
+        trade_ts: datetime,
+        feature_version: str,
+        enrichment_budget_version: str,
+        fingerprint_version: str,
+        payload: object,
+        materialized_at: datetime,
+    ) -> TradeFeaturesModel | None:
+        existing = await self._feature_row(observation_id, trade_ts, feature_version, "live_as_of")
+        if existing is not None:
+            return None
+        model = TradeFeaturesModel(
+            observation_id=observation_id,
+            trade_ts=trade_ts,
+            feature_version=feature_version,
+            order_as_of_contract="live_as_of",
+            enrichment_budget_version=enrichment_budget_version,
+            fingerprint_version=fingerprint_version,
+            payload=payload,
+            materialized_at=materialized_at,
+        )
+        self.session.add(model)
+        await self.session.flush()
+        return model
+
+    async def _feature_row(
+        self,
+        observation_id: str,
+        trade_ts: datetime,
+        feature_version: str,
+        order_as_of_contract: str,
+    ) -> TradeFeaturesModel | None:
+        result = await self.session.execute(
+            select(TradeFeaturesModel)
+            .where(TradeFeaturesModel.observation_id == observation_id)
+            .where(TradeFeaturesModel.trade_ts == trade_ts)
+            .where(TradeFeaturesModel.feature_version == feature_version)
+            .where(TradeFeaturesModel.order_as_of_contract == order_as_of_contract)
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def wallet_as_of(
+        self, proxy_wallet: str, trade_ts: datetime
+    ) -> ArchiveWalletModel | None:
+        result = await self.session.execute(
+            select(ArchiveWalletModel)
+            .where(ArchiveWalletModel.proxy_wallet == proxy_wallet)
+            .where(ArchiveWalletModel.known_at <= trade_ts)
+            .order_by(ArchiveWalletModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def funding_as_of(
+        self, proxy_wallet: str, trade_ts: datetime
+    ) -> ProxyFundingModel | None:
+        result = await self.session.execute(
+            select(ProxyFundingModel)
+            .where(ProxyFundingModel.proxy_wallet == proxy_wallet)
+            .where(ProxyFundingModel.known_at <= trade_ts)
+            .order_by(ProxyFundingModel.known_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

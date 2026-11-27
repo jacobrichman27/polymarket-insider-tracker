@@ -45,12 +45,6 @@ class NullArchiveMetrics:
         return None
 
 
-def _outcome_repair_status(observation: TradeObservation) -> str:
-    if observation.outcome_resolution is OutcomeResolution.PROVIDED:
-        return "not_needed"
-    return "not_attempted"
-
-
 def _notional(observation: TradeObservation) -> Decimal:
     return observation.event.price * observation.event.size
 
@@ -75,6 +69,22 @@ def is_partition_miss(error: ProgrammingError) -> bool:
     return "partition" in message and "not found" in message
 
 
+def _outcome_fields(
+    observation: TradeObservation,
+) -> tuple[str | None, int | None, str, str | None, int | None]:
+    """Return API outcome columns, repair status, and repaired fields."""
+    event = observation.event
+    if observation.outcome_resolution is OutcomeResolution.PROVIDED:
+        outcome = event.outcome or None
+        return outcome, (event.outcome_index if outcome else None), "not_needed", None, None
+    if observation.outcome_resolution is OutcomeResolution.REPAIRED:
+        repaired = event.outcome or None
+        repaired_index = event.outcome_index if repaired else None
+        # Keep API columns thin; hot-path Gamma fill lives in repaired fields.
+        return None, None, "ok", repaired, repaired_index
+    return None, None, "not_attempted", None, None
+
+
 def _to_dto(
     observation: TradeObservation,
     *,
@@ -83,8 +93,7 @@ def _to_dto(
     raw_retention: bool,
 ) -> TradeTapeDTO:
     event = observation.event
-    outcome = event.outcome or None
-    outcome_index = event.outcome_index if outcome else None
+    outcome, outcome_index, status, repaired, repaired_index = _outcome_fields(observation)
     return TradeTapeDTO(
         trade_ts=event.timestamp,
         observation_id=observation.identity,
@@ -103,9 +112,9 @@ def _to_dto(
         notional_usdc=_notional(observation),
         source="data-api.trades",
         neg_risk=None,
-        outcome_repair_status=_outcome_repair_status(observation),
-        outcome_repaired=None,
-        outcome_index_repaired=None,
+        outcome_repair_status=status,
+        outcome_repaired=repaired,
+        outcome_index_repaired=repaired_index,
         receipt_status="not_attempted",
         info_knowability_regime="unknown",
         knowability_label_source="unknown",
@@ -153,6 +162,7 @@ class ArchiveWriter:
             archive_start_at=state.archive_start_at,
             raw_retention=self._raw_retention,
         )
+        _observe_anomalies(observation, raw_retention=self._raw_retention)
         try:
             inserted = await self._repo.insert_trade(dto)
         except ProgrammingError as error:
@@ -178,3 +188,11 @@ class ArchiveWriter:
             observation_id=observation.identity,
             detail=str(error),
         )
+
+
+def _observe_anomalies(observation: TradeObservation, *, raw_retention: bool) -> None:
+    from polymarket_insider_tracker.ingestor.archive.tape_anomaly import (
+        observe_tape_observation,
+    )
+
+    observe_tape_observation(observation, raw_retention=raw_retention)

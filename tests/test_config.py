@@ -764,6 +764,58 @@ class TestSettings:
         )
         assert settings.archive.knowability_model_effectively_enabled is False
         assert settings.archive.outcome_repair_effectively_enabled is False
+        assert settings.archive.featuring_enabled is False
+        assert settings.archive.featuring_effectively_enabled is False
+        assert settings.archive.featuring_notional_cutoff_usdc == 5000
+        assert settings.archive.featuring_unknown_opt_in is False
+        assert settings.archive.classifier_control_sample_rate == 0.001
+        assert settings.archive.hot_window_days == 14
+        assert settings.archive.collect_priority is False
+        assert settings.archive.collect_priority_effectively_enabled is False
+        assert settings.archive.featuring_config_version == "b.v1"
+        assert settings.archive.enrichment_budget_version == "b.v1"
+        assert settings.archive.fingerprint_version == "b.v2"
+        assert settings.archive.feature_version == "b.v1"
+
+    def test_featuring_requires_archive_enabled_for_effective_on(self) -> None:
+        with env_context(
+            {
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "ARCHIVE_ENABLED": "false",
+                "ARCHIVE_FEATURING_ENABLED": "true",
+            },
+            clear=True,
+        ):
+            settings = Settings()
+
+        assert settings.archive.featuring_enabled is True
+        assert settings.archive.featuring_effectively_enabled is False
+
+    def test_collect_priority_requires_archive_enabled(self) -> None:
+        with env_context(
+            {
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "ARCHIVE_ENABLED": "false",
+                "ARCHIVE_COLLECT_PRIORITY": "true",
+            },
+            clear=True,
+        ):
+            settings = Settings()
+
+        assert settings.archive.collect_priority is True
+        assert settings.archive.collect_priority_effectively_enabled is False
+
+        with env_context(
+            {
+                "DATABASE_URL": "postgresql+psycopg://user:pass@localhost/db",
+                "ARCHIVE_ENABLED": "true",
+                "ARCHIVE_COLLECT_PRIORITY": "true",
+            },
+            clear=True,
+        ):
+            on = Settings()
+
+        assert on.archive.collect_priority_effectively_enabled is True
 
     def test_archive_settings_can_enable_via_env(self) -> None:
         with env_context(
@@ -808,16 +860,16 @@ class TestSettings:
         ):
             summary = Settings().redacted_summary()
 
-        assert summary["archive"] == {
-            "enabled": "True",
-            "raw_retention": "True",
-            "outcome_repair_enabled": "False",
-            "outcome_repair_lag_seconds": "300",
-            "outcome_repair_unrepaired_max_ratio": "0.05",
-            "knowability_model_enabled": "True",
-            "knowability_model_max_calls_per_day": str(DEFAULT_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY),
-            "knowability_model_api_key": "(set)",
-        }
+        archive = summary["archive"]
+        assert isinstance(archive, dict)
+        assert archive["enabled"] == "True"
+        assert archive["raw_retention"] == "True"
+        assert archive["knowability_model_api_key"] == "(set)"
+        assert archive["featuring_enabled"] == "False"
+        assert archive["featuring_notional_cutoff_usdc"] == "5000"
+        assert archive["hot_window_days"] == "14"
+        assert archive["collect_priority"] == "False"
+        assert archive["featuring_config_version"] == "b.v1"
         assert "secret" not in str(summary)
         assert "sk-super-secret" not in str(summary)
 

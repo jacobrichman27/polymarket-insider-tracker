@@ -24,10 +24,34 @@ class RepairDecision:
     outcome_index_repaired: int | None = None
 
 
-def api_outcome_usable(outcome: str | None, outcome_index: int | None) -> bool:
+def api_outcome_usable(
+    outcome: str | None,
+    outcome_index: int | None,
+    *,
+    raw_outcome_index: int | None = None,
+) -> bool:
+    if raw_outcome_index == THIN_OUTCOME_INDEX:
+        return False
     if outcome_index == THIN_OUTCOME_INDEX:
         return False
     return outcome is not None and bool(str(outcome).strip())
+
+
+def raw_outcome_index(raw_row: object | None) -> int | None:
+    """Read provider ``outcomeIndex`` from retained raw JSON when present."""
+    if not isinstance(raw_row, dict):
+        return None
+    value = raw_row.get("outcomeIndex")
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _map_token(token_id: str, token_outcomes: dict[str, Any]) -> RepairDecision:
@@ -52,9 +76,10 @@ def decide_repair(
     outcome_index: int | None,
     token_id: str,
     token_outcomes: dict[str, Any] | None,
+    raw_outcome_index: int | None = None,
 ) -> RepairDecision:
     """Never invent. Usable API → not_needed; thin → map or unrepaired."""
-    if api_outcome_usable(outcome, outcome_index):
+    if api_outcome_usable(outcome, outcome_index, raw_outcome_index=raw_outcome_index):
         return RepairDecision(status=STATUS_NOT_NEEDED)
     if not token_outcomes:
         return RepairDecision(status=STATUS_UNREPAIRED)
@@ -91,11 +116,13 @@ async def repair_trade_row(
     outcome: str | None,
     outcome_index: int | None,
     repair_enabled_at: datetime | None,
+    raw_row_json: object | None = None,
 ) -> RepairDecision | None:
     """Apply forward-only repair for one post-cutover row. Pre-cutover → None."""
     if not is_post_cutover(observed_at, repair_enabled_at):
         return None
-    if api_outcome_usable(outcome, outcome_index):
+    raw_index = raw_outcome_index(raw_row_json)
+    if api_outcome_usable(outcome, outcome_index, raw_outcome_index=raw_index):
         decision = RepairDecision(status=STATUS_NOT_NEEDED)
         await _persist(session, trade_ts, observation_id, decision)
         return decision
@@ -106,6 +133,7 @@ async def repair_trade_row(
         outcome_index=outcome_index,
         token_id=token_id,
         token_outcomes=outcomes,
+        raw_outcome_index=raw_index,
     )
     await _persist(session, trade_ts, observation_id, decision)
     return decision

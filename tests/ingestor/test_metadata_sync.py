@@ -42,7 +42,8 @@ class FakeClobClient(ClobClient):
             raise self._raise_error
         return list(self._markets)
 
-    def get_market(self, condition_id: str) -> Market:
+    def get_market(self, condition_id: str, *, max_retries: int | None = None) -> Market:
+        _ = max_retries
         if self._raise_error is not None:
             raise self._raise_error
         market = next((m for m in self._markets if m.condition_id == condition_id), None)

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     DateTime,
     Index,
@@ -257,6 +258,25 @@ class TradeModel(Base):
     info_knowability_regime: Mapped[str | None] = mapped_column(Text, nullable=True)
     knowability_label_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_row_json: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    gamma_enrichment_status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="not_attempted"
+    )
+    funding_lookup_status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="not_attempted"
+    )
+    wallet_hydrate_status: Mapped[str] = mapped_column(
+        Text, nullable=False, default="not_attempted"
+    )
+    block_number: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    log_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    onchain_direction: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fee_usdc: Mapped[Decimal | None] = mapped_column(Numeric(30, 10), nullable=True)
+    counterparty_wallets: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    fill_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fingerprint_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    featuring_config_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    featuring_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    enrichment_budget_version: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class IngestGapEventModel(Base):
@@ -314,6 +334,8 @@ class MarketVersionModel(Base):
     knowable_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     knowability_label_source: Mapped[str | None] = mapped_column(Text, nullable=True)
     knowability_policy_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    knowability_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3), nullable=True)
+    knowability_model_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_market_json: Mapped[object | None] = mapped_column(JSON, nullable=True)
 
@@ -386,3 +408,89 @@ class KnowabilityOverrideModel(Base):
     knowable_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     policy_version: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class EnrichmentWorkItemModel(Base):
+    """Durable featuring/enrichment work queue row."""
+
+    __tablename__ = "enrichment_work_items"
+    __table_args__ = (
+        Index("idx_enrichment_work_status", "status"),
+        Index("idx_enrichment_work_obs", "observation_id", "trade_ts"),
+        UniqueConstraint(
+            "observation_id",
+            "trade_ts",
+            "enrichment_budget_version",
+            "trigger",
+            name="uq_enrichment_work_obs_budget_trigger",
+        ),
+    )
+
+    work_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    observation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    trade_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    enrichment_budget_version: Mapped[str] = mapped_column(Text, nullable=False)
+    trigger: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    enqueued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TradeFeaturesModel(Base):
+    """Optional featured convenience snapshot (not delayed trade labels)."""
+
+    __tablename__ = "trade_features"
+    __table_args__ = (
+        PrimaryKeyConstraint(
+            "observation_id",
+            "trade_ts",
+            "feature_version",
+            "order_as_of_contract",
+        ),
+    )
+
+    observation_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    trade_ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    feature_version: Mapped[str] = mapped_column(Text, nullable=False)
+    order_as_of_contract: Mapped[str] = mapped_column(Text, nullable=False)
+    enrichment_budget_version: Mapped[str] = mapped_column(Text, nullable=False)
+    fingerprint_version: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[object] = mapped_column(JSON, nullable=False)
+    materialized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ArchiveWalletModel(Base):
+    """Versioned lifetime-hydrate wallet dimension (research archive)."""
+
+    __tablename__ = "wallets"
+    __table_args__ = (PrimaryKeyConstraint("proxy_wallet", "known_at"),)
+
+    proxy_wallet: Mapped[str] = mapped_column(Text, nullable=False)
+    known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    wallet_hydrate_status: Mapped[str] = mapped_column(Text, nullable=False)
+    lifetime_is_first_trade: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    payload: Mapped[object | None] = mapped_column(JSON, nullable=True)
+    event_horizon_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class ProxyFundingModel(Base):
+    """Versioned proxy funding / owner dimension."""
+
+    __tablename__ = "proxy_funding"
+    __table_args__ = (PrimaryKeyConstraint("proxy_wallet", "known_at"),)
+
+    proxy_wallet: Mapped[str] = mapped_column(Text, nullable=False)
+    known_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    funding_lookup_status: Mapped[str] = mapped_column(Text, nullable=False)
+    funding_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    owner_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    wallet_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    wallet_created_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    first_funding_exact: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    payload: Mapped[object | None] = mapped_column(JSON, nullable=True)

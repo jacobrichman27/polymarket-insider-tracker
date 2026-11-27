@@ -30,6 +30,11 @@ ARCHIVE_PARTITION_MISS_TOTAL = Counter(
     "polymarket_archive_partition_miss_total",
     "Archive inserts that failed closed on a missing partition",
 )
+ARCHIVE_GAP_EVENTS_TOTAL = Counter(
+    "polymarket_archive_gap_events_total",
+    "Durable ingest_gap_events opens by class and reason",
+    ["class_", "reason"],
+)
 
 
 class PrometheusArchiveMetrics:
@@ -43,6 +48,9 @@ class PrometheusArchiveMetrics:
 
     def record_write_failure(self, reason: str) -> None:
         ARCHIVE_WRITE_FAILURES_TOTAL.labels(reason=reason).inc()
+
+    def record_gap_event(self, *, class_: str, reason: str) -> None:
+        ARCHIVE_GAP_EVENTS_TOTAL.labels(class_=class_, reason=reason).inc()
 
     def set_owed(self, count: int, oldest_age_seconds: float) -> None:
         ARCHIVE_OWED_OBSERVATIONS.set(count)

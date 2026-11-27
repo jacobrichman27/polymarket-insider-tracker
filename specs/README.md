@@ -10,8 +10,8 @@ Before every per-feature Spec Kit command, set the intended directory explicitly
 
 ```bash
 SPECIFY_FEATURE_DIRECTORY=specs/002-reproducible-runtime <speckit command>
-# After it exists:
-SPECIFY_FEATURE_DIRECTORY=specs/006-versioned-markets-knowability <speckit command>
+# Active Phase B example:
+SPECIFY_FEATURE_DIRECTORY=specs/007-featured-enrichment <speckit command>
 ```
 
 Replace the value for the active slice. Never rely on the ignored pointer when reviewing or executing a
@@ -25,17 +25,19 @@ Proposed execution order:
 4. `004-truthful-detection-contract`
 5. `005-research-trade-archive` (Phase A0 tape — **implemented**; activate only for A0 follow-ups)
 6. `006-versioned-markets-knowability` (Phase A1 — **implemented/verified** 2026-11-25; G-044–G-046 Closed; activate this path only for A1 follow-ups)
-7. `007-featured-enrichment` (Phase B — proposed)
-8. `008-labels-resolutions` (Phase C — proposed)
-9. `009-archive-retention` (Phase D — proposed)
+7. `007-featured-enrichment` (Phase B platform — **locally verified** 2026-11-26; G-047–G-051 Open until ops audit / merge; activate for B platform follow-ups only)
+8. `010-featured-core-features` (Phase B.1 — **proposed** 2026-11-26; Data.md §§1–6 **Core** field delivery MUST; G-052; specify before activate)
+9. `011-featured-useful-features` (Phase B.2 — **proposed** 2026-11-26; remaining §§1–6 **Useful** so the catalog eventually lands; G-053; after 010)
+10. `008-labels-resolutions` (Phase C — proposed)
+11. `009-archive-retention` (Phase D — proposed)
 
-Numeric prefixes record creation order, not dependency order. Archive phases A0–D and the
-prerequisite 001/003 contract amendments are sequenced in
+Numeric prefixes record creation order, not dependency order. Archive phases A0–D (including
+B.1/B.2 field delivery) and the prerequisite 001/003 contract amendments are sequenced in
 [`docs/research-archive-roadmap.md`](../docs/research-archive-roadmap.md) and
 [`Data.md`](../Data.md). Until a listed directory exists, do not point
 `SPECIFY_FEATURE_DIRECTORY` at it. When authoring or implementing `005-…` (or later archive
 slices), set the env var to that exact path on every Spec Kit command—never the ignored
-`.specify/feature.json` pointer, and never a leftover `001`/`002`/`003`/`004` value from a
+`.specify/feature.json` pointer, and never a leftover `001`/`002`/`003`/`004`/`007` value from a
 prior session.
 
 Before implementing an archive slice, register its owned gaps in

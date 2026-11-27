@@ -20,8 +20,12 @@ from polymarket_insider_tracker.ingestor.archive.decisions_client import (
     HttpxDecisionsClient,
     NullDecisionsClient,
 )
-from polymarket_insider_tracker.ingestor.archive.knowability import classify_market
+from polymarket_insider_tracker.ingestor.archive.knowability import (
+    KNOWABILITY_POLICY_VERSION,
+    classify_market,
+)
 from polymarket_insider_tracker.ingestor.archive.markets import (
+    MarketSnapshot,
     append_market_version,
     parse_token_outcomes,
 )
@@ -33,8 +37,19 @@ from polymarket_insider_tracker.ingestor.archive.repair_kpi import (
 from polymarket_insider_tracker.ingestor.archive.state import ensure_repair_cutover
 from polymarket_insider_tracker.ingestor.gamma_client import DEFAULT_HOST
 from polymarket_insider_tracker.redaction import redact_exception_message
-from polymarket_insider_tracker.storage.models import TradeModel
+from polymarket_insider_tracker.storage.models import MarketVersionModel, TradeModel
 from polymarket_insider_tracker.storage.repos import MarketsRepository, TradeArchiveRepository
+
+
+def _market_version_created(
+    before: MarketVersionModel | None, written: MarketSnapshot | None
+) -> bool:
+    if written is None:
+        return False
+    if before is None:
+        return True
+    return written.known_at != before.known_at
+
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +83,7 @@ class MarketWarmCoordinator:
 @dataclass
 class ArchiveWorkerHandles:
     repair_task: asyncio.Task[None] | None = None
+    enrichment_task: asyncio.Task[None] | None = None
     stop_event: asyncio.Event | None = None
     warm: MarketWarmCoordinator | None = None
 
@@ -101,9 +117,12 @@ def first_market(body: object) -> dict[str, Any] | None:
     return None
 
 
-async def _has_market_version(db_manager: SessionFactory, condition_id: str) -> bool:
+async def _has_current_policy_market(db_manager: SessionFactory, condition_id: str) -> bool:
+    # Legacy v1/v2 stamps are history only; re-warm/classify under current policy.
     async with db_manager.get_async_session() as session:
-        row = await MarketsRepository(session).latest(condition_id)
+        row = await MarketsRepository(session).latest(
+            condition_id, policy_version=KNOWABILITY_POLICY_VERSION
+        )
         return row is not None
 
 
@@ -132,7 +151,8 @@ async def _persist_warm(
             model_enabled=archive.knowability_model_effectively_enabled,
             budget=budget,
         )
-        await append_market_version(
+        before = await MarketsRepository(session).latest(condition_id)
+        written = await append_market_version(
             session,
             condition_id=condition_id,
             token_outcomes=outcomes,
@@ -142,10 +162,40 @@ async def _persist_warm(
             knowable_from=None,
             knowability_label_source=classification.label_source,
             knowability_policy_version=classification.policy_version,
+            knowability_confidence=classification.confidence,
+            knowability_model_version=classification.model_version,
             source_version="gamma",
             raw_market_json=raw,
         )
+        created = _market_version_created(before, written)
+        if created:
+            await TradeArchiveRepository(session).requeue_unrepaired_for_condition(
+                condition_id=condition_id
+            )
         await session.commit()
+    _schedule_featuring_backfill(db_manager, condition_id, classification.regime, archive)
+
+
+def _schedule_featuring_backfill(
+    db_manager: SessionFactory,
+    condition_id: str,
+    regime: str,
+    archive: ArchiveSettings,
+) -> None:
+    from polymarket_insider_tracker.ingestor.archive.featuring import (
+        schedule_regime_upgrade_backfill,
+        should_run_featuring_workers,
+    )
+
+    if not should_run_featuring_workers(archive):
+        return
+    schedule_regime_upgrade_backfill(
+        asyncio.get_running_loop(),
+        db_manager,
+        condition_id=condition_id,
+        new_regime=regime,
+        archive=archive,
+    )
 
 
 async def _fetch_warm_gamma(
@@ -171,7 +221,7 @@ async def warm_market_metadata(
     """Fetch Gamma metadata once per market. Returns True when the market is warmed."""
     if not archive.enabled:
         return False
-    if await _has_market_version(db_manager, condition_id):
+    if await _has_current_policy_market(db_manager, condition_id):
         return True
     warm = coordinator if coordinator is not None else build_warm_coordinator(archive)
     payload = await _fetch_warm_gamma(condition_id, fetch_market or fetch_gamma_market)
@@ -352,6 +402,7 @@ async def _repair_one(db_manager: SessionFactory, *, row: TradeModel, cutover: d
                 outcome=row.outcome,
                 outcome_index=row.outcome_index,
                 repair_enabled_at=cutover,
+                raw_row_json=row.raw_row_json,
             )
             await session.commit()
     except Exception as exc:
@@ -388,8 +439,21 @@ def start_archive_workers(
 ) -> ArchiveWorkerHandles:
     coord = warm if warm is not None else build_warm_coordinator(archive)
     handles = ArchiveWorkerHandles(stop_event=asyncio.Event(), warm=coord)
+    assert handles.stop_event is not None
+    _maybe_start_repair(handles, db_manager, source_id, archive, repair_health)
+    _maybe_start_enrichment(handles, db_manager, archive)
+    return handles
+
+
+def _maybe_start_repair(
+    handles: ArchiveWorkerHandles,
+    db_manager: SessionFactory,
+    source_id: str,
+    archive: ArchiveSettings,
+    repair_health: OutcomeRepairHealthSignals | None,
+) -> None:
     if not archive.outcome_repair_effectively_enabled:
-        return handles
+        return
     health = repair_health if repair_health is not None else OutcomeRepairHealthSignals()
     assert handles.stop_event is not None
     handles.repair_task = asyncio.create_task(
@@ -401,16 +465,96 @@ def start_archive_workers(
             health=health,
         )
     )
-    return handles
+
+
+def _maybe_start_enrichment(
+    handles: ArchiveWorkerHandles,
+    db_manager: SessionFactory,
+    archive: ArchiveSettings,
+) -> None:
+    from polymarket_insider_tracker.ingestor.archive.featuring import should_run_featuring_workers
+
+    if not should_run_featuring_workers(archive):
+        return
+    assert handles.stop_event is not None
+    handles.enrichment_task = asyncio.create_task(
+        enrichment_loop(db_manager, archive=archive, stop_event=handles.stop_event)
+    )
+
+
+async def enrichment_loop(
+    db_manager: SessionFactory,
+    *,
+    archive: ArchiveSettings,
+    stop_event: asyncio.Event,
+    interval_seconds: float = 2.0,
+) -> None:
+    from polymarket_insider_tracker.ingestor.archive.enrichment_arms import default_arm_runners
+    from polymarket_insider_tracker.ingestor.archive.enrichment_health import enrichment_health
+
+    runners = default_arm_runners()
+    health = enrichment_health()
+    while not stop_event.is_set():
+        try:
+            await _enrichment_pass(db_manager, archive=archive, runners=runners)
+        except Exception as exc:
+            health.record_loop_error()
+            logger.warning("enrichment loop error: %s", redact_exception_message(exc))
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval_seconds)
+        except TimeoutError:
+            continue
+
+
+async def _enrichment_pass(
+    db_manager: SessionFactory,
+    *,
+    archive: ArchiveSettings,
+    runners: dict[str, Any],
+) -> None:
+    from datetime import UTC, datetime
+
+    from polymarket_insider_tracker.ingestor.archive.enrichment import ArmRunner, enrich_work_item
+    from polymarket_insider_tracker.ingestor.archive.enrichment_health import enrichment_health
+    from polymarket_insider_tracker.storage.repos import FeaturingEnrichmentRepository
+
+    typed_runners = cast(dict[str, ArmRunner], runners)
+    async with db_manager.get_async_session() as session:
+        repo = FeaturingEnrichmentRepository(session)
+        work = await repo.claim_next_pending(now=datetime.now(UTC))
+        if work is None:
+            return
+        result = await enrich_work_item(session, work, archive=archive, runners=typed_runners)
+        enrichment_health().record_attempt(result.statuses)
+        finished = datetime.now(UTC)
+        if result.trade_missing:
+            await repo.abandon_work(
+                work.work_id,
+                finished_at=finished,
+                last_error="trade_missing",
+            )
+        else:
+            await repo.complete_work(work.work_id, finished_at=finished)
+        await session.commit()
 
 
 async def stop_archive_workers(handles: ArchiveWorkerHandles) -> None:
     if handles.stop_event is not None:
         handles.stop_event.set()
-    if handles.repair_task is None:
+    from polymarket_insider_tracker.ingestor.archive.featuring import (
+        cancel_featuring_background_tasks,
+    )
+
+    await cancel_featuring_background_tasks()
+    await _cancel_task(handles.repair_task)
+    await _cancel_task(handles.enrichment_task)
+
+
+async def _cancel_task(task: asyncio.Task[None] | None) -> None:
+    if task is None:
         return
-    handles.repair_task.cancel()
+    task.cancel()
     try:
-        await handles.repair_task
+        await task
     except asyncio.CancelledError:
         return

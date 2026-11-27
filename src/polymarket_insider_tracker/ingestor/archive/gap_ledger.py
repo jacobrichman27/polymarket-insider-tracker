@@ -42,6 +42,7 @@ async def record_write_failure(
             detail=detail,
         )
     )
+    _record_gap_metric("write_failure", reason)
 
 
 async def resolve_write_failure(
@@ -60,6 +61,7 @@ async def abandon_write_failure(
     await TradeArchiveRepository(session).abandon_write_failure(
         source_id, observation_id, reason=reason
     )
+    _record_gap_metric("write_failure", reason)
 
 
 async def mirror_loss_event(session: AsyncSession, *, source_id: str, event: LossEvent) -> None:
@@ -84,3 +86,10 @@ async def mirror_loss_event(session: AsyncSession, *, source_id: str, event: Los
             },
         )
     )
+    _record_gap_metric("ingest_loss", event.reason.value)
+
+
+def _record_gap_metric(class_: str, reason: str) -> None:
+    from polymarket_insider_tracker.ingestor.archive.metrics import ARCHIVE_GAP_EVENTS_TOTAL
+
+    ARCHIVE_GAP_EVENTS_TOTAL.labels(class_=class_, reason=reason).inc()

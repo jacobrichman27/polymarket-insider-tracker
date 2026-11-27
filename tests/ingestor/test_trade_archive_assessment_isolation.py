@@ -13,8 +13,10 @@ def test_archive_flags_do_not_disable_assessment_persist_default() -> None:
             "ARCHIVE_ENABLED": "true",
             "ARCHIVE_OUTCOME_REPAIR_ENABLED": "true",
             "ARCHIVE_KNOWABILITY_MODEL_ENABLED": "true",
+            "ARCHIVE_FEATURING_ENABLED": "true",
         },
         clear=True,
     ):
         settings = Settings()
     assert settings.detector.persist_assessments is True
+    assert settings.archive.featuring_effectively_enabled is True

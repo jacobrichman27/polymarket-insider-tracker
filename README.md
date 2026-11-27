@@ -226,6 +226,13 @@ A recoverable `degraded` trade source with recent successful fetches can still b
 | `ARCHIVE_KNOWABILITY_MODEL_ENABLED` | No | `true` | Model-on-miss intent; `false` forces off |
 | `ARCHIVE_KNOWABILITY_MODEL_MAX_CALLS_PER_DAY` | No | `10000` | Hard UTC-day Decisions call budget |
 | `ARCHIVE_KNOWABILITY_MODEL_API_KEY` | No | — | OpenAI Decisions API key (secret; absent → model off) |
+| `ARCHIVE_FEATURING_ENABLED` | No | `false` | Featured enrichment workers (requires archive on) |
+| `ARCHIVE_FEATURING_NOTIONAL_CUTOFF_USDC` | No | `5000` | Versioned notional gate for featuring |
+| `ARCHIVE_FEATURING_UNKNOWN_OPT_IN` | No | `false` | Opt `unknown` into featuring only via explicit bump |
+| `ARCHIVE_CLASSIFIER_CONTROL_SAMPLE_RATE` | No | `0.001` | Seeded sample of `no_private_edge` for classifier control |
+| `ARCHIVE_HOT_WINDOW_DAYS` | No | `14` | Hot window for regime-upgrade featuring backfill (7–30) |
+| `ARCHIVE_ENRICHMENT_BUDGET_VERSION` | No | `b.v1` | Enrichment cap / status version stamp |
+| `ARCHIVE_FINGERPRINT_VERSION` | No | `b.v2` | Strong/weak fill fingerprint version (canonical weak decimals) |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 | `DRY_RUN` | No | `false` | Skip sending alerts (same idea as `--dry-run`) |
 | `HEALTH_PORT` | No | `8080` | Health / metrics HTTP port |

@@ -294,7 +294,8 @@ class EmptyMarket(Market):
 
 
 class EmptyReplyClob(FakeClobClient):
-    def get_market(self, condition_id: str) -> Market:
+    def get_market(self, condition_id: str, *, max_retries: int | None = None) -> Market:
+        _ = max_retries
         return EmptyMarket(
             condition_id=condition_id, question="", description="", tokens=(), end_date=None
         )

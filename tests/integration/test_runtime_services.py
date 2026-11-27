@@ -139,8 +139,8 @@ def test_expected_revisions_do_not_depend_on_the_working_directory(
     backend = module.RealMigrationBackend(LOCAL_DATABASE_URL)
     head, previous = backend.expected_revisions()
 
-    assert head == "005_research_trade_archive_a0"
-    assert previous == "004_terminal_errors"
+    assert head == "008_featured_enrichment"
+    assert previous == "007_knowability_question_cache"
 
 
 def test_alembic_subprocess_environment_drops_libpq_variables(

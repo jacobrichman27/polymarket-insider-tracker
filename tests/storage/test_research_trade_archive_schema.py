@@ -21,25 +21,27 @@ from polymarket_insider_tracker.storage.models import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DATABASE_ENV = "DATABASE_URL"
-OMITTED_TRADE_COLUMNS = (
+FEATURED_ENRICHMENT_TRADE_COLUMNS = (
     "fill_fingerprint",
     "fingerprint_version",
-    "data_complete",
     "block_number",
     "log_index",
     "onchain_direction",
     "fee_usdc",
+    "gamma_enrichment_status",
+    "funding_lookup_status",
+    "wallet_hydrate_status",
 )
 
 
-def test_trade_model_has_a0_columns_without_phase_b_fields() -> None:
+def test_trade_model_has_tape_and_featured_enrichment_columns() -> None:
     columns = {col.name for col in TradeModel.__table__.columns}
     assert "observation_id" in columns
     assert "trade_ts" in columns
     assert "raw_row_json" in columns
     assert "archive_start_at" in columns
-    for name in OMITTED_TRADE_COLUMNS:
-        assert name not in columns
+    assert set(FEATURED_ENRICHMENT_TRADE_COLUMNS) <= columns
+    assert "data_complete" not in columns
 
 
 def test_gap_and_collector_models_expose_required_columns() -> None:
@@ -149,5 +151,5 @@ def test_a0_migration_upgrade_and_downgrade_on_disposable_postgres(
     assert tables == {"trades", "ingest_gap_events", "archive_collector_state"}
     assert partitions >= 15
     assert "raw_row_json" in trade_cols
-    assert "fill_fingerprint" not in trade_cols
+    assert "fill_fingerprint" in trade_cols
     assert remaining == set()

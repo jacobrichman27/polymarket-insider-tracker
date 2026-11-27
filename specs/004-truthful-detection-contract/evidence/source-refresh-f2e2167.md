@@ -269,3 +269,12 @@ case, the two `_metadata_sync` checks, the two `_health_monitor` checks and `_ca
 rule, threshold, literal, ordering or persisted value changes. The `pipeline.py` hash was re-pinned
 from the output of `check_source_hashes`; every other hash and every other evidence file is
 unchanged.
+
+## Nineteenth refresh: archive / outcome-repair health wiring already on main; no scoring change (2026-11-26)
+
+`base_commit` stays 3aafd0b. Only `pipeline.py` drifts relative to the eighteenth pin: `_wire_health_monitor`
+registers `trade_archive` and `outcome_repair` component checkers when archive flags are effectively
+on (landed with slice `006` / A1 on `main` `a99672f`, hash was not re-pinned then). No scoring rule,
+threshold, literal, ordering or persisted assessment value changes. The `pipeline.py` hash was
+re-pinned from the output of `check_source_hashes` during `007-featured-enrichment` local
+`quality.verify`; every other hash and every other evidence file is unchanged.

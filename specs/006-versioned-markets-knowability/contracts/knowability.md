@@ -18,9 +18,11 @@
 
 Record `knowability_label_source` on the markets version (and optional stamp on new trades inserts). Successful non-`unknown` model classifications MUST write through to the **series** cache when a series id is present **and** to the **question** cache when the question normalizes non-empty (not into free-form templates).
 
-**Default model adapter:** OpenAI Decisions API (`POST /v1/decisions`, `gpt-6-luna`) with a single bounded `choice` question for regime classification. Version the adapter; credentials via existing secret-safe config patterns. No onset / `knowable_from` question under `knowability.v3`.
+**Default model adapter:** OpenAI Decisions API (`POST /v1/decisions`, `gpt-6-luna`) with a single bounded `choice` question for regime classification. Version the adapter; credentials via existing secret-safe config patterns. No onset / `knowable_from` question under `knowability.v5`.
 
-**Policy stamp:** `knowability.v3` (product code; `v1` = initial Decisions copy; `v2` = principle-based privileged-edge definitions; `v3` = binary regimes `no_private_edge` / `private_edge_possible` / `unknown`, no live onset).
+**Policy stamp:** `knowability.v5` (product code; `v1` = initial Decisions copy; `v2` = principle-based privileged-edge definitions; `v3` = binary `no_private_edge` / `private_edge_possible` / `unknown`; `v4` = brief settlement/factor split; `v5` = collapse back to binary privileged edge, no live onset). Current model adapter prompt: `knowability.prompt.v8` (public-process vs privileged-channel settlement test; moneyline/spread/handicap and held finished results → private; season/public accumulation → no_edge; Decisions evidence includes clipped resolution source + description). Easy public title shapes (temperature, up/down, tweets/Truth Social, O/U totals, exact score, in-event) short-circuit before Decisions as `label_source=title_rule`.
+
+**Golden set (opt-in):** Frozen human-agreed titles live under `evals/knowability/` and run via `scripts/knowability_golden.py` (offline stub by default; `--live` for Decisions). Same isolation rule as the trades smoke check: never part of `verify.py` profiles or CI. See `evals/knowability/README.md`.
 
 ## Model-on-miss enablement & spend guardrails
 
@@ -39,10 +41,11 @@ Record `knowability_label_source` on the markets version (and optional stamp on 
 
 `no_private_edge` | `private_edge_possible` | `unknown`
 
-- Binary lock: timing of when privileged knowledge might appear does **not** create a third class. If a privileged channel can exist before public resolution → `private_edge_possible`; otherwise → `no_private_edge`.
-- `markets.knowable_from` remains nullable for legacy rows and is unused under `v3` (classifications write `NULL`).
+- Timing of when privileged knowledge might appear does **not** create another class.
+- Privileged edge is a single regime; do not split settlement-fact vs intermediate-factor at classification time.
+- `markets.knowable_from` remains nullable for legacy rows and is unused under `v5` (classifications write `NULL`).
 - All regimes remain admitted on the trades tape; never drop `no_private_edge` or `unknown`.
-- Featuring (Phase B) gates on `private_edge_possible` only (plus notional cutoff).
+- Featuring (Phase B) gates on `private_edge_possible` (plus notional cutoff). Legacy `private_settlement_possible` / `private_factor_possible` remain featuring-eligible during transition.
 
 ## Upgrade semantics
 
@@ -50,4 +53,4 @@ New markets version on classification/upgrade. **Do not** rewrite historical tra
 
 ## Policy versioning
 
-`knowability_policy` version stamps (`knowability.v3` current) apply forward. Do not mix versions silently in one analysis slice. Historical `v1`/`v2` rows with legacy regime names remain as stored history.
+`knowability_policy` version stamps (`knowability.v5` current) apply forward. Do not mix versions silently in one analysis slice. Historical `v1`/`v2`/`v3`/`v4` rows with legacy regime names remain as stored history.

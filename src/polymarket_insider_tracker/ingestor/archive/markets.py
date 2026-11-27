@@ -23,6 +23,8 @@ class MarketSnapshot:
     knowable_from: datetime | None = None
     knowability_label_source: str | None = None
     knowability_policy_version: str | None = None
+    knowability_confidence: float | None = None
+    knowability_model_version: str | None = None
     source_version: str | None = None
 
 
@@ -35,6 +37,8 @@ class _MarketAttrs:
     knowable_from: datetime | None
     knowability_label_source: str | None
     knowability_policy_version: str | None
+    knowability_confidence: float | None
+    knowability_model_version: str | None
     source_version: str | None
 
 
@@ -53,9 +57,15 @@ async def snapshot_at(
     *,
     condition_id: str,
     at: datetime,
+    policy_version: str | None = None,
 ) -> MarketSnapshot | None:
+    """As-of markets join.
+
+    Omit ``policy_version`` for token/Gamma metadata (any stamp). Pass the current
+    knowability policy when the caller will use regime labels.
+    """
     repo = MarketsRepository(session)
-    row = await repo.latest_at_or_before(condition_id, at)
+    row = await repo.latest_at_or_before(condition_id, at, policy_version=policy_version)
     if row is None:
         return None
     return MarketSnapshot(
@@ -68,8 +78,21 @@ async def snapshot_at(
         knowable_from=row.knowable_from,
         knowability_label_source=row.knowability_label_source,
         knowability_policy_version=row.knowability_policy_version,
+        knowability_confidence=_confidence_float(row.knowability_confidence),
+        knowability_model_version=row.knowability_model_version,
         source_version=row.source_version,
     )
+
+
+def _confidence_float(value: object) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _freeze_outcomes(outcomes: dict[str, Any]) -> tuple[tuple[str, str], ...]:
@@ -88,6 +111,8 @@ def _attrs(
     knowable_from: datetime | None,
     knowability_label_source: str | None,
     knowability_policy_version: str | None,
+    knowability_confidence: float | None,
+    knowability_model_version: str | None,
     source_version: str | None,
 ) -> _MarketAttrs:
     return _MarketAttrs(
@@ -98,6 +123,8 @@ def _attrs(
         knowable_from=knowable_from,
         knowability_label_source=knowability_label_source,
         knowability_policy_version=knowability_policy_version,
+        knowability_confidence=knowability_confidence,
+        knowability_model_version=knowability_model_version,
         source_version=source_version,
     )
 
@@ -112,6 +139,8 @@ def attributes_changed(
     knowable_from: datetime | None,
     knowability_label_source: str | None,
     knowability_policy_version: str | None,
+    knowability_confidence: float | None,
+    knowability_model_version: str | None,
     source_version: str | None,
 ) -> bool:
     left = _attrs(
@@ -122,6 +151,8 @@ def attributes_changed(
         knowable_from=existing.knowable_from,
         knowability_label_source=existing.knowability_label_source,
         knowability_policy_version=existing.knowability_policy_version,
+        knowability_confidence=existing.knowability_confidence,
+        knowability_model_version=existing.knowability_model_version,
         source_version=existing.source_version,
     )
     right = _attrs(
@@ -132,6 +163,8 @@ def attributes_changed(
         knowable_from=knowable_from,
         knowability_label_source=knowability_label_source,
         knowability_policy_version=knowability_policy_version,
+        knowability_confidence=knowability_confidence,
+        knowability_model_version=knowability_model_version,
         source_version=source_version,
     )
     return left != right
@@ -149,6 +182,8 @@ async def append_market_version(
     knowable_from: datetime | None = None,
     knowability_label_source: str | None = None,
     knowability_policy_version: str | None = None,
+    knowability_confidence: float | None = None,
+    knowability_model_version: str | None = None,
     source_version: str | None = None,
     raw_market_json: object | None = None,
 ) -> MarketSnapshot | None:
@@ -167,6 +202,8 @@ async def append_market_version(
             knowable_from=latest.knowable_from,
             knowability_label_source=latest.knowability_label_source,
             knowability_policy_version=latest.knowability_policy_version,
+            knowability_confidence=_confidence_float(latest.knowability_confidence),
+            knowability_model_version=latest.knowability_model_version,
             source_version=latest.source_version,
         )
         changed = attributes_changed(
@@ -178,6 +215,8 @@ async def append_market_version(
             knowable_from=knowable_from,
             knowability_label_source=knowability_label_source,
             knowability_policy_version=knowability_policy_version,
+            knowability_confidence=knowability_confidence,
+            knowability_model_version=knowability_model_version,
             source_version=source_version,
         )
         if not changed:
@@ -192,6 +231,8 @@ async def append_market_version(
         knowable_from=knowable_from,
         knowability_label_source=knowability_label_source,
         knowability_policy_version=knowability_policy_version,
+        knowability_confidence=knowability_confidence,
+        knowability_model_version=knowability_model_version,
         source_version=source_version,
         raw_market_json=raw_market_json,
     )
@@ -205,6 +246,8 @@ async def append_market_version(
         knowable_from=row.knowable_from,
         knowability_label_source=row.knowability_label_source,
         knowability_policy_version=row.knowability_policy_version,
+        knowability_confidence=_confidence_float(row.knowability_confidence),
+        knowability_model_version=row.knowability_model_version,
         source_version=row.source_version,
     )
 

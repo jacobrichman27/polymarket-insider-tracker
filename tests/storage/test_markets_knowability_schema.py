@@ -33,18 +33,22 @@ MARKETS_KNOWABILITY_TABLES = (
 )
 
 
-def test_markets_knowability_models_expose_required_columns() -> None:
+def test_markets_and_collector_columns_present() -> None:
     market_cols = {col.name for col in MarketVersionModel.__table__.columns}
-    assert {"condition_id", "known_at", "token_outcomes", "knowable_from"} <= market_cols
     state_cols = {col.name for col in ArchiveCollectorStateModel.__table__.columns}
+    assert {"condition_id", "known_at", "token_outcomes", "knowable_from"} <= market_cols
+    assert {"knowability_confidence", "knowability_model_version"} <= market_cols
     assert "repair_enabled_at" in state_cols
+
+
+def test_knowability_cache_columns_present() -> None:
     series_cols = {col.name for col in KnowabilitySeriesCacheModel.__table__.columns}
-    assert {"series_slug", "policy_version", "regime"} <= series_cols
     template_cols = {col.name for col in KnowabilityTemplateCacheModel.__table__.columns}
-    assert {"template_id", "allowlist_version", "regime"} <= template_cols
     question_cols = {col.name for col in KnowabilityQuestionCacheModel.__table__.columns}
-    assert {"question_key", "question_text", "policy_version", "regime"} <= question_cols
     override_cols = {col.name for col in KnowabilityOverrideModel.__table__.columns}
+    assert {"series_slug", "policy_version", "regime"} <= series_cols
+    assert {"template_id", "allowlist_version", "regime"} <= template_cols
+    assert {"question_key", "question_text", "policy_version", "regime"} <= question_cols
     assert {"key_type", "key_id", "regime", "policy_version"} <= override_cols
 
 

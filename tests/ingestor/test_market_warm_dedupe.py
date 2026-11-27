@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -22,6 +23,7 @@ from polymarket_insider_tracker.ingestor.archive.decisions_client import (
     BudgetGate,
     HttpxDecisionsClient,
 )
+from polymarket_insider_tracker.ingestor.archive.knowability import KNOWABILITY_POLICY_VERSION
 from polymarket_insider_tracker.ingestor.archive.workers import (
     MarketWarmCoordinator,
     build_warm_coordinator,
@@ -92,6 +94,47 @@ async def test_second_warm_skips_gamma_fetch_when_market_exists() -> None:
     async with factory() as session:
         rows = list((await session.execute(select(MarketVersionModel))).scalars().all())
     assert len(rows) == 1
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_legacy_policy_only_market_rewarms_under_current_policy() -> None:
+    engine, db, factory = await _memory_db()
+    archive = _archive()
+    stamp = datetime(2026, 11, 20, 12, 0, 0, tzinfo=UTC)
+    async with factory() as session:
+        session.add(
+            MarketVersionModel(
+                condition_id="c-legacy",
+                known_at=stamp,
+                token_outcomes={"t0": {"outcome": "Yes", "outcome_index": 0}},
+                question="old",
+                series_slug=None,
+                info_knowability_regime="always_latent",
+                knowable_from=None,
+                knowability_label_source="test",
+                knowability_policy_version="knowability.v1",
+                source_version="gamma",
+                raw_market_json=None,
+            )
+        )
+        await session.commit()
+    fetches = 0
+
+    async def fetch(condition_id: str) -> dict[str, object]:
+        nonlocal fetches
+        fetches += 1
+        return _gamma(condition_id)
+
+    assert await warm_market_metadata(
+        db, condition_id="c-legacy", archive=archive, fetch_market=fetch
+    )
+    assert fetches == 1
+    async with factory() as session:
+        rows = list((await session.execute(select(MarketVersionModel))).scalars().all())
+        versions = {row.knowability_policy_version for row in rows}
+    assert "knowability.v1" in versions
+    assert KNOWABILITY_POLICY_VERSION in versions
     await engine.dispose()
 
 

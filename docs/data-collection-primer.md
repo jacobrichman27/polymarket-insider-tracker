@@ -330,11 +330,11 @@ Not every market allows privileged private knowledge before the public finds out
 
 | Regime | Meaning |
 | ------ | ------- |
-| **`no_private_edge`** | No meaningful non-public informational edge on the settlement fact before it is public |
-| **`private_edge_possible`** | Some party can hold privileged, non-public knowledge of the settlement fact before it is public |
-| **`unknown`** | Listing does not clearly establish whether a privileged non-public edge exists |
+| **`no_private_edge`** | No meaningful privileged non-public informational edge before settlement is public |
+| **`private_edge_possible`** | Some party can hold a privileged non-public informational advantage before settlement is public |
+| **`unknown`** | Listing does not clearly establish whether a privileged edge exists |
 
-Binary lock: timing of when privileged knowledge might appear does **not** create a third class. If a privileged channel can exist before public resolution → `private_edge_possible`. There is no live `knowable_from` onset under `knowability.v3`.
+Policy stamp: `knowability.v5`. Timing of when privileged knowledge might appear does **not** create another class. Featuring gates on `private_edge_possible`. There is no live `knowable_from` onset.
 
 **Do not ask an LLM for every sports game.** Recurring shapes reuse a cache: Gamma `seriesSlug` when present, else exact question-text cache, else (when enabled) a normalized question template. Call a cheap decision model only on cache miss. See `Data.md` Knowability.
 

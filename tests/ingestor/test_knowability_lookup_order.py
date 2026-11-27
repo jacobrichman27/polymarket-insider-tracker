@@ -79,6 +79,47 @@ async def test_override_beats_series_and_model(session_factory: SessionFactory) 
 
 
 @pytest.mark.asyncio
+async def test_legacy_policy_override_is_ignored(session_factory: SessionFactory) -> None:
+    stamp = datetime(2026, 11, 24, tzinfo=UTC)
+    async with session_factory() as session:
+        repo = KnowabilityRepository(session)
+        await repo.append_override(
+            key_type="series",
+            key_id="series-legacy",
+            known_at=stamp,
+            regime="always_latent",
+            policy_version="knowability.v1",
+        )
+        await session.commit()
+        result = await classify_market(
+            session,
+            question="Will the committee approve the nominee?",
+            series_slug="series-legacy",
+            model_enabled=False,
+        )
+    assert result.regime == "unknown"
+    assert result.label_source == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_title_rule_skips_model_for_temperature(
+    session_factory: SessionFactory,
+) -> None:
+    decisions = _FakeDecisions()
+    async with session_factory() as session:
+        result = await classify_market(
+            session,
+            question="Will the highest temperature in Paris be -2°C on November 28?",
+            series_slug="weather-paris",
+            decisions=decisions,
+            model_enabled=True,
+        )
+    assert result.regime == "no_private_edge"
+    assert result.label_source == "title_rule"
+    assert decisions.calls == 0
+
+
+@pytest.mark.asyncio
 async def test_series_beats_template(session_factory: SessionFactory) -> None:
     stamp = datetime(2026, 11, 24, tzinfo=UTC)
     async with session_factory() as session:

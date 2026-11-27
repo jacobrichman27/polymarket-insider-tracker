@@ -264,6 +264,10 @@ class Pipeline:
             self._health_monitor.set_component_checker("trade_archive", self._check_trade_archive)
         if self._settings.archive.outcome_repair_effectively_enabled:
             self._health_monitor.set_component_checker("outcome_repair", self._check_outcome_repair)
+        if self._settings.archive.featuring_effectively_enabled:
+            self._health_monitor.set_component_checker(
+                "featured_enrichment", self._check_featured_enrichment
+            )
         self._health_monitor.set_last_error_provider(lambda: self._stats.last_error)
 
     async def _check_trade_archive(self) -> ComponentStatus:
@@ -271,6 +275,13 @@ class Pipeline:
 
     async def _check_outcome_repair(self) -> ComponentStatus:
         return self._outcome_repair_health.evaluate()
+
+    async def _check_featured_enrichment(self) -> ComponentStatus:
+        from polymarket_insider_tracker.ingestor.archive.enrichment_health import (
+            enrichment_health,
+        )
+
+        return enrichment_health().evaluate()
 
     async def _check_database(self) -> ComponentStatus:
         if not self._db_manager:
@@ -726,6 +737,8 @@ class Pipeline:
         self, trade: TradeEvent, evaluated_at: datetime, installed: _InstalledComponents
     ) -> tuple[SizeEvaluation | None, DetectorError | None]:
         """Run size anomaly detection; a failure is returned so it can be counted."""
+        if self._settings.archive.collect_priority_effectively_enabled:
+            return None, None
         detector = installed.current.size_anomaly_detector
         evaluation = detector.evaluate(trade, evaluated_at=evaluated_at)
         return await _run_detector("size_anomaly", trade, evaluation)
